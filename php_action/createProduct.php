@@ -1,50 +1,60 @@
-<?php 	
-
+<?php
 require_once 'core.php';
+require_once 'csrf.php';
 
-$valid['success'] = array('success' => false, 'messages' => array());
+$valid = ['success' => false, 'messages' => ''];
 
-if($_POST) {	
+if($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-	$productName 		= $_POST['productName'];
-  $quantity 			= $_POST['quantity'];
-  $rate 					= $_POST['rate'];
-  $dailyRate 			= $_POST['dailyRate']; // NEW FIELD ADDED
-  $brandName 			= $_POST['brandName'];
-  $categoryName 	= $_POST['categoryName'];
-  $productStatus 	= $_POST['productStatus'];
+    $productName   = trim($_POST['productName']    ?? '');
+    $quantity      = intval($_POST['quantity']      ?? 0);
+    $rate          = floatval($_POST['rate']        ?? 0);
+    $dailyRate     = floatval($_POST['dailyRate']   ?? 0);
+    $brandId       = intval($_POST['brandName']     ?? 0);   // select sends brand_id
+    $categoryId    = intval($_POST['categoryName']  ?? 0);   // select sends categories_id
+    $productStatus = intval($_POST['productStatus'] ?? 1);
 
-	$type = explode('.', $_FILES['productImage']['name']);
-	$type = $type[count($type)-1];		
-	$url = '../assests/images/stock/'.uniqid(rand()).'.'.$type;
-	
-	if(in_array($type, array('gif', 'jpg', 'jpeg', 'png', 'JPG', 'GIF', 'JPEG', 'PNG'))) {
-		if(is_uploaded_file($_FILES['productImage']['tmp_name'])) {			
-			if(move_uploaded_file($_FILES['productImage']['tmp_name'], $url)) {
-				
-				$sql = "INSERT INTO product (product_name, product_image, brand_id, categories_id, quantity, rate, daily_rate, active, status) 
-				VALUES ('$productName', '$url', '$brandName', '$categoryName', '$quantity', '$rate', '$dailyRate', '$productStatus', 1)";
+    if($productName === '') {
+        $valid['messages'] = "Product name is required.";
+        echo json_encode($valid); exit();
+    }
 
-				if($connect->query($sql) === TRUE) {
-					$valid['success'] = true;
-					$valid['messages'] = "Successfully Added";	
-				} else {
-					$valid['success'] = false;
-					$valid['messages'] = "Error while adding the product: " . $connect->error;
-				}
+    $fileInfo = $_FILES['productImage'] ?? null;
+    if(!$fileInfo || $fileInfo['error'] !== UPLOAD_ERR_OK) {
+        $valid['messages'] = "Please select a valid image to upload.";
+        echo json_encode($valid); exit();
+    }
 
-			}	else {
-				$valid['success'] = false;
-				$valid['messages'] = "Error while uploading image";
-			}	// /else	
-		} // if
-	} else {
-		$valid['success'] = false;
-		$valid['messages'] = "Invalid image format. Please upload gif, jpg, jpeg, or png files.";
-	} // if in_array 		
+    $ext = strtolower(pathinfo($fileInfo['name'], PATHINFO_EXTENSION));
+    if(!in_array($ext, ['gif','jpg','jpeg','png'])) {
+        $valid['messages'] = "Invalid image format. Allowed: gif, jpg, jpeg, png.";
+        echo json_encode($valid); exit();
+    }
 
-	$connect->close();
+    if(!is_uploaded_file($fileInfo['tmp_name'])) {
+        $valid['messages'] = "Invalid file upload.";
+        echo json_encode($valid); exit();
+    }
 
-	echo json_encode($valid);
- 
-} // /if $_POST
+    $url = '../assets/images/stock/' . uniqid(rand()) . '.' . $ext;
+    if(!move_uploaded_file($fileInfo['tmp_name'], $url)) {
+        $valid['messages'] = "Error while uploading image.";
+        echo json_encode($valid); exit();
+    }
+
+    $stmt = $connect->prepare(
+        "INSERT INTO product (product_name, product_image, brand_id, categories_id, quantity, rate, daily_rate, active, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)"
+    );
+    $stmt->bind_param("ssiidddi", $productName, $url, $brandId, $categoryId, $quantity, $rate, $dailyRate, $productStatus);
+
+    if($stmt->execute()) {
+        $valid['success']  = true;
+        $valid['messages'] = "Product added successfully.";
+    } else {
+        $valid['messages'] = "Error while adding the product.";
+    }
+    $stmt->close();
+    echo json_encode($valid);
+}

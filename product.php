@@ -89,10 +89,17 @@
 	        </div> <!-- /form-group-->	        	 
 
 	        <div class="form-group">
-	        	<label for="rate" class="col-sm-3 control-label">Rate: </label>
+	        	<label for="rate" class="col-sm-3 control-label">Purchase Rate: </label>
 	        	<label class="col-sm-1 control-label">: </label>
 				    <div class="col-sm-8">
-				      <input type="text" class="form-control" id="rate" placeholder="Rate" name="rate" autocomplete="off">
+				      <input type="text" class="form-control" id="rate" placeholder="Purchase Rate" name="rate" autocomplete="off">
+				    </div>
+	        </div> <!-- /form-group-->
+	        <div class="form-group">
+	        	<label for="dailyRate" class="col-sm-3 control-label">Daily Rate (Rental): </label>
+	        	<label class="col-sm-1 control-label">: </label>
+				    <div class="col-sm-8">
+				      <input type="text" class="form-control" id="dailyRate" placeholder="Daily Rental Rate" name="dailyRate" autocomplete="off" required>
 				    </div>
 	        </div> <!-- /form-group-->	     	        
 
@@ -247,10 +254,17 @@
 			        </div> <!-- /form-group-->	        	 
 
 			        <div class="form-group">
-			        	<label for="editRate" class="col-sm-3 control-label">Rate: </label>
+			        	<label for="editRate" class="col-sm-3 control-label">Purchase Rate: </label>
 			        	<label class="col-sm-1 control-label">: </label>
 						    <div class="col-sm-8">
-						      <input type="text" class="form-control" id="editRate" placeholder="Rate" name="editRate" autocomplete="off">
+						      <input type="text" class="form-control" id="editRate" placeholder="Purchase Rate" name="editRate" autocomplete="off">
+						    </div>
+			        </div> <!-- /form-group-->
+			        <div class="form-group">
+			        	<label for="editDailyRate" class="col-sm-3 control-label">Daily Rate (Rental): </label>
+			        	<label class="col-sm-1 control-label">: </label>
+						    <div class="col-sm-8">
+						      <input type="text" class="form-control" id="editDailyRate" placeholder="Daily Rental Rate" name="editDailyRate" autocomplete="off" required>
 						    </div>
 			        </div> <!-- /form-group-->	     	        
 

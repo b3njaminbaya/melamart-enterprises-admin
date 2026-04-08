@@ -201,8 +201,8 @@ if($_GET['o'] == 'add') {
 				  <div class="form-group" style="margin:0">
 				    <label for="vat" class="col-sm-3 control-label">VAT</label>
 				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="vat" name="vat" readonly="true" />
-				      <input type="hidden" class="form-control" id="vatValue" name="vatValue" />
+				      <input type="text" class="form-control" id="vat" name="vat" readonly="true" value="0.00" />
+				      <input type="hidden" class="form-control" id="vatValue" name="vatValue" value="0.00" />
 				    </div>
 				  </div> <!--/form-group-->			  
 				  <div class="form-group" style="margin:0">
@@ -215,7 +215,7 @@ if($_GET['o'] == 'add') {
 				  <div class="form-group" style="margin:0">
 				    <label for="discount" class="col-sm-3 control-label">Discount</label>
 				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="discount" name="discount" onkeyup="discountFunc()" autocomplete="off" />
+				      <input type="text" class="form-control" id="discount" name="discount" onkeyup="discountFunc()" autocomplete="off" value="0" />
 				    </div>
 				  </div> <!--/form-group-->	
 				  <div class="form-group" style="margin:0">
@@ -225,10 +225,10 @@ if($_GET['o'] == 'add') {
 				      <input type="hidden" class="form-control" id="grandTotalValue" name="grandTotalValue" />
 				    </div>
 				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="gstn" class="col-sm-3 control-label">GSTN</label>
+				  <div class="form-group" style="margin:0; display:none;">
+				    <label for="gstn" class="col-sm-3 control-label">GSTN (Optional)</label>
 				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="gstn" name="gstn" placeholder="GST Number" autocomplete="off" />
+				      <input type="text" class="form-control" id="gstn" name="gstn" placeholder="GST Number (Optional)" autocomplete="off" />
 				    </div>
 				  </div> <!--/form-group-->
 			  </div> <!--/col-md-6-->
@@ -323,6 +323,7 @@ if($_GET['o'] == 'add') {
 						<th>Driver Name</th>
 						<th>Driver Contact</th>
 						<th>Returned By</th>
+						<th>Returned By Contact</th>
 						<th>Approved By</th>
 						<th>Grand Total</th>
 						<th>Paid</th>
@@ -549,8 +550,8 @@ if($_GET['o'] == 'add') {
 				  <div class="form-group" style="margin:0">
 				    <label for="vat" class="col-sm-3 control-label">VAT</label>
 				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="vat" name="vat" disabled="true" value="<?php echo $data[13] ?>"  />
-				      <input type="hidden" class="form-control" id="vatValue" name="vatValue" value="<?php echo $data[13] ?>"  />
+				      <input type="text" class="form-control" id="vat" name="vat" disabled="true" value="0.00"  />
+				      <input type="hidden" class="form-control" id="vatValue" name="vatValue" value="0.00"  />
 				    </div>
 				  </div> <!--/form-group-->			  
 				  <div class="form-group" style="margin:0">
@@ -573,8 +574,8 @@ if($_GET['o'] == 'add') {
 				      <input type="hidden" class="form-control" id="grandTotalValue" name="grandTotalValue" value="<?php echo $data[16] ?>"  />
 				    </div>
 				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="gstn" class="col-sm-3 control-label">GSTN</label>
+				  <div class="form-group" style="margin:0; display:none;">
+				    <label for="gstn" class="col-sm-3 control-label">GSTN (Optional)</label>
 				    <div class="col-sm-9">
 				      <input type="text" class="form-control" id="gstn" name="gstn" value="<?php echo $data[22] ?>"  />
 				    </div>

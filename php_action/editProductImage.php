@@ -10,7 +10,7 @@ $productId = $_POST['productId'];
  
 $type = explode('.', $_FILES['editProductImage']['name']);
 	$type = $type[count($type)-1];		
-	$url = '../assests/images/stock/'.uniqid(rand()).'.'.$type;
+	$url = '../assets/images/stock/'.uniqid(rand()).'.'.$type;
 	if(in_array($type, array('gif', 'jpg', 'jpeg', 'png', 'JPG', 'GIF', 'JPEG', 'PNG'))) {
 		if(is_uploaded_file($_FILES['editProductImage']['tmp_name'])) {			
 			if(move_uploaded_file($_FILES['editProductImage']['tmp_name'], $url)) {

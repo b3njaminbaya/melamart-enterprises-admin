@@ -1,27 +1,29 @@
-<?php 
-
+<?php
 require_once 'core.php';
+require_once 'csrf.php';
 
-if($_POST) {
+$valid = ['success' => false, 'messages' => ''];
 
-	$valid['success'] = array('success' => false, 'messages' => array());
+if($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-	$username = $_POST['username'];
-	$userId = $_POST['user_id'];
+    $username = trim($_POST['username'] ?? '');
+    $userId   = intval($_POST['user_id'] ?? 0);
 
-	$sql = "UPDATE users SET username = '$username' WHERE user_id = {$userId}";
-	if($connect->query($sql) === TRUE) {
-		$valid['success'] = true;
-		$valid['messages'] = "Successfully Update";	
-	} else {
-		$valid['success'] = false;
-		$valid['messages'] = "Error while updating product info";
-	}
+    if($username === '' || $userId === 0) {
+        $valid['messages'] = "Username and user ID are required.";
+        echo json_encode($valid); exit();
+    }
 
-	$connect->close();
+    $stmt = $connect->prepare("UPDATE users SET username = ? WHERE user_id = ?");
+    $stmt->bind_param("si", $username, $userId);
 
-	echo json_encode($valid);
-
+    if($stmt->execute()) {
+        $valid['success']  = true;
+        $valid['messages'] = "Username updated successfully.";
+    } else {
+        $valid['messages'] = "Error while updating username.";
+    }
+    $stmt->close();
+    echo json_encode($valid);
 }
-
-?>

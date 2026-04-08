@@ -1,27 +1,32 @@
-<?php 	
-
+<?php
 require_once 'core.php';
+require_once 'csrf.php';
 
-$valid['success'] = array('success' => false, 'messages' => array());
+$valid = ['success' => false, 'messages' => ''];
 
-if($_POST) {	
+if($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-	$brandName = $_POST['editCategoriesName'];
-  $brandStatus = $_POST['editCategoriesStatus']; 
-  $categoriesId = $_POST['editCategoriesId'];
+    $catName   = trim($_POST['editCategoriesName']   ?? '');
+    $catStatus = intval($_POST['editCategoriesStatus'] ?? 1);
+    $catId     = intval($_POST['editCategoriesId']     ?? 0);
 
-	$sql = "UPDATE categories SET categories_name = '$brandName', categories_active = '$brandStatus' WHERE categories_id = '$categoriesId'";
+    if($catName === '' || $catId === 0) {
+        $valid['messages'] = "Category name and ID are required.";
+        echo json_encode($valid); exit();
+    }
 
-	if($connect->query($sql) === TRUE) {
-	 	$valid['success'] = true;
-		$valid['messages'] = "Successfully Updated";	
-	} else {
-	 	$valid['success'] = false;
-	 	$valid['messages'] = "Error while updating the categories";
-	}
-	 
-	$connect->close();
+    $stmt = $connect->prepare(
+        "UPDATE categories SET categories_name = ?, categories_active = ? WHERE categories_id = ?"
+    );
+    $stmt->bind_param("sii", $catName, $catStatus, $catId);
 
-	echo json_encode($valid);
- 
-} // /if $_POST
+    if($stmt->execute()) {
+        $valid['success']  = true;
+        $valid['messages'] = "Category updated successfully.";
+    } else {
+        $valid['messages'] = "Error while updating the category.";
+    }
+    $stmt->close();
+    echo json_encode($valid);
+}

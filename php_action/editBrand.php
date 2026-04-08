@@ -1,27 +1,32 @@
-<?php 	
-
+<?php
 require_once 'core.php';
+require_once 'csrf.php';
 
-$valid['success'] = array('success' => false, 'messages' => array());
+$valid = ['success' => false, 'messages' => ''];
 
-if($_POST) {	
+if($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-	$brandName = $_POST['editBrandName'];
-  $brandStatus = $_POST['editBrandStatus']; 
-  $brandId = $_POST['brandId'];
+    $brandName   = trim($_POST['editBrandName']   ?? '');
+    $brandStatus = intval($_POST['editBrandStatus'] ?? 1);
+    $brandId     = intval($_POST['brandId']         ?? 0);
 
-	$sql = "UPDATE brands SET brand_name = '$brandName', brand_active = '$brandStatus' WHERE brand_id = '$brandId'";
+    if($brandName === '' || $brandId === 0) {
+        $valid['messages'] = "Brand name and ID are required.";
+        echo json_encode($valid); exit();
+    }
 
-	if($connect->query($sql) === TRUE) {
-	 	$valid['success'] = true;
-		$valid['messages'] = "Successfully Updated";	
-	} else {
-	 	$valid['success'] = false;
-	 	$valid['messages'] = "Error while adding the members";
-	}
-	 
-	$connect->close();
+    $stmt = $connect->prepare(
+        "UPDATE brands SET brand_name = ?, brand_active = ? WHERE brand_id = ?"
+    );
+    $stmt->bind_param("sii", $brandName, $brandStatus, $brandId);
 
-	echo json_encode($valid);
- 
-} // /if $_POST
+    if($stmt->execute()) {
+        $valid['success']  = true;
+        $valid['messages'] = "Brand updated successfully.";
+    } else {
+        $valid['messages'] = "Error while updating the brand.";
+    }
+    $stmt->close();
+    echo json_encode($valid);
+}

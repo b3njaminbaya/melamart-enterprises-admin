@@ -138,12 +138,7 @@ $(document).ready(function() {
 				$('#orderStatus').closest('.form-group').addClass('has-success');
 			} // /else
 
-			if(gstn == "") {
-				$("#gstn").after('<p class="text-danger"> The GSTN field is required </p>');
-				$('#gstn').closest('.form-group').addClass('has-error');
-			} else {
-				$('#gstn').closest('.form-group').addClass('has-success');
-			} // /else
+			// GSTN is now optional - removed validation
 
 			// array validation
 			var productName = document.getElementsByName('productName[]');				
@@ -188,11 +183,25 @@ $(document).ready(function() {
 			
 
 			if(orderDate && expectReturnDate && siteLocation && clientName && clientContact && 
-			   driverName && driverContact && paid && discount && paymentType && paymentStatus && 
-			   paymentPlace && orderStatus && gstn) {
+			   driverName && driverContact && paid !== "" && discount !== "" && paymentType && paymentStatus && 
+			   paymentPlace && orderStatus) {
 				if(validateProduct == true && validateQuantity == true) {
-					// create order button
-					// $("#createOrderBtn").button('loading');
+					// Prevent double submission
+					var $submitBtn = $("#createOrderBtn");
+					if($submitBtn.prop('disabled')) {
+						return false; // Already submitting
+					}
+					
+					// Disable submit button and show loading
+					$submitBtn.prop('disabled', true).button('loading');
+					
+					// Clear any previous messages
+					$(".text-danger").remove();
+					$('.form-group').removeClass('has-error').removeClass('has-success');
+
+					// Debug: Log form data
+					console.log("Submitting order form...");
+					console.log("Form data:", form.serialize());
 
 					$.ajax({
 						url : form.attr('action'),
@@ -200,16 +209,17 @@ $(document).ready(function() {
 						data: form.serialize(),					
 						dataType: 'json',
 						success:function(response) {
+							console.log("Order creation response:", response);
 							console.log(response);
-							// reset button
-							$("#createOrderBtn").button('reset');
 							
-							$(".text-danger").remove();
-							$('.form-group').removeClass('has-error').removeClass('has-success');
+							// Reset button
+							$submitBtn.prop('disabled', false).button('reset');
 
 							if(response.success == true) {
+								// Show success toast notification immediately
+								showToast(response.messages, 'success', 6000);
 								
-								// create order button
+								// Also show in success messages area
 								$(".success-messages").html('<div class="alert alert-success">'+
 	            	'<button type="button" class="close" data-dismiss="alert">&times;</button>'+
 	            	'<strong><i class="glyphicon glyphicon-ok-sign"></i></strong> '+ response.messages +
@@ -220,15 +230,59 @@ $(document).ready(function() {
 								
 								$("html, body, div.panel, div.pane-body").animate({scrollTop: '0px'}, 100);
 
-								// disabled te modal footer button
+								// Disable the submit button footer
 								$(".submitButtonFooter").addClass('div-hide');
-								// remove the product row
+								// Remove the product row buttons
 								$(".removeProductRowBtn").addClass('div-hide');
 								
 							} else {
-								alert(response.messages);								
+								// Show error toast
+								var errorMsg = response.messages || 'Error creating order. Please try again.';
+								
+								// Include debug info if available
+								if(response.debug && Object.keys(response.debug).length > 0) {
+									console.error("Debug info:", response.debug);
+									errorMsg += " (Check console for details)";
+								}
+								
+								showToast(errorMsg, 'error', 8000);
+								
+								// Show detailed error in alert for debugging
+								if(response.debug) {
+									alert(errorMsg + "\n\nDebug Info:\n" + JSON.stringify(response.debug, null, 2));
+								} else {
+									alert(errorMsg);
+								}
 							}
-						} // /response
+						}, // /response
+						error: function(xhr, status, error) {
+							// Reset button on error
+							$submitBtn.prop('disabled', false).button('reset');
+							
+							// Show error toast
+							var errorMsg = 'Network error. Please check your connection and try again.';
+							try {
+								var response = JSON.parse(xhr.responseText);
+								if(response.messages) {
+									errorMsg = response.messages;
+								}
+							} catch(e) {
+								if(xhr.responseText) {
+									errorMsg = xhr.responseText.substring(0, 200);
+								}
+							}
+							
+							// Log full error for debugging
+							console.error('Order creation error:', {
+								status: status,
+								error: error,
+								responseText: xhr.responseText,
+								statusCode: xhr.status,
+								readyState: xhr.readyState
+							});
+							
+							showToast(errorMsg, 'error', 5000);
+						}
 					}); // /ajax
 				} // if array validate is true
 			} // /if field validate is true
@@ -371,12 +425,7 @@ $(document).ready(function() {
 				$('#orderStatus').closest('.form-group').addClass('has-success');
 			} // /else
 
-			if(gstn == "") {
-				$("#gstn").after('<p class="text-danger"> The GSTN field is required </p>');
-				$('#gstn').closest('.form-group').addClass('has-error');
-			} else {
-				$('#gstn').closest('.form-group').addClass('has-success');
-			} // /else
+			// GSTN is now optional - removed validation
 
 			// array validation
 			var productName = document.getElementsByName('productName[]');				
@@ -421,8 +470,8 @@ $(document).ready(function() {
 			
 
 			if(orderDate && expectReturnDate && siteLocation && clientName && clientContact && 
-			   driverName && driverContact && paid && discount && paymentType && paymentStatus && 
-			   paymentPlace && orderStatus && gstn) {
+			   driverName && driverContact && paid !== "" && discount !== "" && paymentType && paymentStatus && 
+			   paymentPlace && orderStatus) {
 				if(validateProduct == true && validateQuantity == true) {
 					// edit order button
 					// $("#editOrderBtn").button('loading');
@@ -779,24 +828,23 @@ function subAmount() {
 
 	totalSubAmount = totalSubAmount.toFixed(2);
 
-	// sub total
+	// sub total (no VAT)
 	$("#subTotal").val(totalSubAmount);
 	$("#subTotalValue").val(totalSubAmount);
 
-	// vat
-	var vat = (Number($("#subTotal").val())/100) * 18;
-	vat = vat.toFixed(2);
-	$("#vat").val(vat);
-	$("#vatValue").val(vat);
+	// VAT removed - set to 0
+	$("#vat").val("0.00");
+	$("#vatValue").val("0.00");
 
-	// total amount
-	var totalAmount = (Number($("#subTotal").val()) + Number($("#vat").val()));
+	// total amount (same as subtotal, no VAT)
+	var totalAmount = Number($("#subTotal").val());
 	totalAmount = totalAmount.toFixed(2);
 	$("#totalAmount").val(totalAmount);
 	$("#totalAmountValue").val(totalAmount);
 
+	// Apply discount if any
 	var discount = $("#discount").val();
-	if(discount) {
+	if(discount && discount > 0) {
 		var grandTotal = Number($("#totalAmount").val()) - Number(discount);
 		grandTotal = grandTotal.toFixed(2);
 		$("#grandTotal").val(grandTotal);
@@ -806,8 +854,9 @@ function subAmount() {
 		$("#grandTotalValue").val(totalAmount);
 	} // /else discount	
 
+	// Calculate due amount
 	var paidAmount = $("#paid").val();
-	if(paidAmount) {
+	if(paidAmount && paidAmount > 0) {
 		paidAmount =  Number($("#grandTotal").val()) - Number(paidAmount);
 		paidAmount = paidAmount.toFixed(2);
 		$("#due").val(paidAmount);
@@ -820,25 +869,29 @@ function subAmount() {
 } // /sub total amount
 
 function discountFunc() {
-	var discount = $("#discount").val();
- 	var totalAmount = Number($("#totalAmount").val());
+	var discount = $("#discount").val() || 0;
+ 	var totalAmount = Number($("#totalAmount").val()) || 0;
  	totalAmount = totalAmount.toFixed(2);
 
  	var grandTotal;
- 	if(totalAmount) { 	
- 		grandTotal = Number($("#totalAmount").val()) - Number($("#discount").val());
+ 	if(totalAmount > 0) { 	
+ 		grandTotal = Number($("#totalAmount").val()) - Number(discount);
+ 		if(grandTotal < 0) grandTotal = 0;
  		grandTotal = grandTotal.toFixed(2);
 
  		$("#grandTotal").val(grandTotal);
  		$("#grandTotalValue").val(grandTotal);
  	} else {
+ 		$("#grandTotal").val("0.00");
+ 		$("#grandTotalValue").val("0.00");
  	}
 
- 	var paid = $("#paid").val();
+ 	var paid = $("#paid").val() || 0;
 
  	var dueAmount; 	
- 	if(paid) {
- 		dueAmount = Number($("#grandTotal").val()) - Number($("#paid").val());
+ 	if(paid > 0) {
+ 		dueAmount = Number($("#grandTotal").val()) - Number(paid);
+ 		if(dueAmount < 0) dueAmount = 0;
  		dueAmount = dueAmount.toFixed(2);
 
  		$("#due").val(dueAmount);

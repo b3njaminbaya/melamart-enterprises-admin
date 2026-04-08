@@ -1,26 +1,28 @@
-<?php 	
-
+<?php
 require_once 'core.php';
+require_once 'csrf.php';
 
+$valid = ['success' => false, 'messages' => ''];
 
-$valid['success'] = array('success' => false, 'messages' => array());
+if($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-$brandId = $_POST['brandId'];
+    $brandId = intval($_POST['brandId'] ?? 0);
 
-if($brandId) { 
+    if($brandId === 0) {
+        $valid['messages'] = "Invalid brand ID.";
+        echo json_encode($valid); exit();
+    }
 
- $sql = "UPDATE brands SET brand_status = 2 WHERE brand_id = {$brandId}";
+    $stmt = $connect->prepare("UPDATE brands SET brand_status = 2 WHERE brand_id = ?");
+    $stmt->bind_param("i", $brandId);
 
- if($connect->query($sql) === TRUE) {
- 	$valid['success'] = true;
-	$valid['messages'] = "Successfully Removed";		
- } else {
- 	$valid['success'] = false;
- 	$valid['messages'] = "Error while remove the brand";
- }
- 
- $connect->close();
-
- echo json_encode($valid);
- 
-} // /if $_POST
+    if($stmt->execute()) {
+        $valid['success']  = true;
+        $valid['messages'] = "Brand removed successfully.";
+    } else {
+        $valid['messages'] = "Error while removing the brand.";
+    }
+    $stmt->close();
+    echo json_encode($valid);
+}

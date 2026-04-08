@@ -1,27 +1,31 @@
-<?php 	
-
+<?php
 require_once 'core.php';
+require_once 'csrf.php';
 
-$valid['success'] = array('success' => false, 'messages' => array());
+$valid = ['success' => false, 'messages' => ''];
 
-if($_POST) {	
+if($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-	$categoriesName = $_POST['categoriesName'];
-  $categoriesStatus = $_POST['categoriesStatus']; 
+    $categoriesName   = trim($_POST['categoriesName']   ?? '');
+    $categoriesStatus = intval($_POST['categoriesStatus'] ?? 1);
 
-	$sql = "INSERT INTO categories (categories_name, categories_active, categories_status) 
-	VALUES ('$categoriesName', '$categoriesStatus', 1)";
+    if($categoriesName === '') {
+        $valid['messages'] = "Category name is required.";
+        echo json_encode($valid); exit();
+    }
 
-	if($connect->query($sql) === TRUE) {
-	 	$valid['success'] = true;
-		$valid['messages'] = "Successfully Added";	
-	} else {
-	 	$valid['success'] = false;
-	 	$valid['messages'] = "Error while adding the members";
-	}
+    $stmt = $connect->prepare(
+        "INSERT INTO categories (categories_name, categories_active, categories_status) VALUES (?, ?, 1)"
+    );
+    $stmt->bind_param("si", $categoriesName, $categoriesStatus);
 
-	$connect->close();
-
-	echo json_encode($valid);
- 
-} // /if $_POST
+    if($stmt->execute()) {
+        $valid['success']  = true;
+        $valid['messages'] = "Category added successfully.";
+    } else {
+        $valid['messages'] = "Error while adding the category.";
+    }
+    $stmt->close();
+    echo json_encode($valid);
+}

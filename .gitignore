@@ -1,0 +1,63 @@
+# =============================================================
+# Melamart Admin — .gitignore
+# =============================================================
+
+# -----------------------------------------------
+# CREDENTIALS — never commit these
+# -----------------------------------------------
+php_action/db_connect.php
+
+# -----------------------------------------------
+# Uploaded & generated files (runtime data)
+# -----------------------------------------------
+assets/images/stock/*
+!assets/images/stock/.gitkeep
+assets/images/photo_default.png
+storage/receipts/*
+!storage/receipts/.gitkeep
+
+# -----------------------------------------------
+# Archives created during cleanup (local only)
+# -----------------------------------------------
+_archive_database/
+_archive_template/
+
+# -----------------------------------------------
+# PHP logs & error dumps
+# -----------------------------------------------
+*.log
+error_log
+php_errorlog
+
+# -----------------------------------------------
+# Composer (not used yet, ignored for future)
+# -----------------------------------------------
+vendor/
+composer.lock
+
+# -----------------------------------------------
+# macOS
+# -----------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# -----------------------------------------------
+# Windows
+# -----------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# -----------------------------------------------
+# IDEs
+# -----------------------------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------------------------
+# PHP built-in server log (php -S)
+# -----------------------------------------------
+*.pid

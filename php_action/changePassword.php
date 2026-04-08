@@ -1,47 +1,68 @@
-<?php 
-
+<?php
 require_once 'core.php';
+require_once 'csrf.php';
 
-if($_POST) {
+$valid = ['success' => false, 'messages' => ''];
 
-	$valid['success'] = array('success' => false, 'messages' => array());
+if($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
-	$currentPassword = md5($_POST['password']);
-	$newPassword = md5($_POST['npassword']);
-	$conformPassword = md5($_POST['cpassword']);
-	$userId = $_POST['user_id'];
+    $currentPassword = $_POST['password']  ?? '';
+    $newPassword     = $_POST['npassword'] ?? '';
+    $confirmPassword = $_POST['cpassword'] ?? '';
+    $userId          = intval($_POST['user_id'] ?? 0);
 
-	$sql ="SELECT * FROM users WHERE user_id = {$userId}";
-	$query = $connect->query($sql);
-	$result = $query->fetch_assoc();
+    if($currentPassword === '' || $newPassword === '' || $confirmPassword === '') {
+        $valid['messages'] = "All password fields are required.";
+        echo json_encode($valid); exit();
+    }
+    if($userId === 0) {
+        $valid['messages'] = "Invalid user ID.";
+        echo json_encode($valid); exit();
+    }
+    if($newPassword !== $confirmPassword) {
+        $valid['messages'] = "New password and confirm password do not match.";
+        echo json_encode($valid); exit();
+    }
+    if(strlen($newPassword) < 8) {
+        $valid['messages'] = "New password must be at least 8 characters.";
+        echo json_encode($valid); exit();
+    }
 
-	if($currentPassword == $result['password']) {
+    // Fetch stored hash
+    $stmt = $connect->prepare("SELECT password FROM users WHERE user_id = ?");
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $stmt->close();
 
-		if($newPassword == $conformPassword) {
+    if($result->num_rows !== 1) {
+        $valid['messages'] = "User not found.";
+        echo json_encode($valid); exit();
+    }
+    $user = $result->fetch_assoc();
+    $stored = $user['password'];
 
-			$updateSql = "UPDATE users SET password = '$newPassword' WHERE user_id = {$userId}";
-			if($connect->query($updateSql) === TRUE) {
-				$valid['success'] = true;
-				$valid['messages'] = "Successfully Updated";		
-			} else {
-				$valid['success'] = false;
-				$valid['messages'] = "Error while updating the password";	
-			}
+    // Verify current password — supports both bcrypt and legacy MD5
+    $currentVerified = password_verify($currentPassword, $stored)
+                    || $stored === md5($currentPassword);
 
-		} else {
-			$valid['success'] = false;
-			$valid['messages'] = "New password does not match with Conform password";
-		}
+    if(!$currentVerified) {
+        $valid['messages'] = "Current password is incorrect.";
+        echo json_encode($valid); exit();
+    }
 
-	} else {
-		$valid['success'] = false;
-		$valid['messages'] = "Current password is incorrect";
-	}
+    // Store new password as bcrypt (replaces any legacy MD5)
+    $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
+    $upStmt  = $connect->prepare("UPDATE users SET password = ? WHERE user_id = ?");
+    $upStmt->bind_param("si", $newHash, $userId);
 
-	$connect->close();
-
-	echo json_encode($valid);
-
+    if($upStmt->execute()) {
+        $valid['success']  = true;
+        $valid['messages'] = "Password updated successfully.";
+    } else {
+        $valid['messages'] = "Error while updating the password.";
+    }
+    $upStmt->close();
+    echo json_encode($valid);
 }
-
-?>

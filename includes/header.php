@@ -1,36 +1,68 @@
 <?php require_once 'php_action/core.php'; ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-	<title>Warehouse Stocks</title>
-  <link rel="shortcut icon"  href="images/fevicon.jpg">   
+  <title>Melamart Admin — Enterprises Limited</title>
+  <link rel="shortcut icon" href="images/logo.jpeg">
 
-	<!-- bootstrap -->
-	<link rel="stylesheet" href="assests/bootstrap/css/bootstrap.min.css">
-	<!-- bootstrap theme-->
-	<link rel="stylesheet" href="assests/bootstrap/css/bootstrap-theme.min.css">
-	<!-- font awesome -->
-	<link rel="stylesheet" href="assests/font-awesome/css/font-awesome.min.css">
+  <!-- Melamart brand fonts — Montserrat (headings) + Open Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 
-  <!-- custom css -->
+  <!-- 1. Bootstrap 3 (base) -->
+  <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
+  <!-- 2. Font Awesome icons -->
+  <link rel="stylesheet" href="assets/font-awesome/css/font-awesome.min.css">
+  <!-- 3. DataTables -->
+  <link rel="stylesheet" href="assets/plugins/datatables/jquery.dataTables.min.css">
+  <!-- 4. File input plugin -->
+  <link rel="stylesheet" href="assets/plugins/fileinput/css/fileinput.min.css">
+  <!-- 5. jQuery UI -->
+  <link rel="stylesheet" href="assets/jquery-ui/jquery-ui.min.css">
+
+  <!-- 6. Melamart brand theme — MUST load after Bootstrap so it overrides correctly -->
+  <link rel="stylesheet" href="custom/css/melamart-theme.css">
+  <!-- 7. Page-specific utilities -->
   <link rel="stylesheet" href="custom/css/custom.css">
 
-	<!-- DataTables -->
-  <link rel="stylesheet" href="assests/plugins/datatables/jquery.dataTables.min.css">
+  <!-- JS: jQuery first, then plugins -->
+  <script src="assets/jquery/jquery.min.js"></script>
+  <script src="assets/jquery-ui/jquery-ui.min.js"></script>
+  <script src="assets/bootstrap/js/bootstrap.min.js"></script>
 
-  <!-- file input -->
-  <link rel="stylesheet" href="assests/plugins/fileinput/css/fileinput.min.css">
+  <!-- Overdue badge counter — admin user only -->
+  <?php if(isset($_SESSION['userId']) && $_SESSION['userId'] === 1) { ?>
+  <script src="custom/js/overdueBadge.js"></script>
+  <?php } ?>
 
-  <!-- jquery -->
-	<script src="assests/jquery/jquery.min.js"></script>
-  <!-- jquery ui -->  
-  <link rel="stylesheet" href="assests/jquery-ui/jquery-ui.min.css">
-  <script src="assests/jquery-ui/jquery-ui.min.js"></script>
+  <!-- CSRF token — available to all AJAX calls via $.ajaxSetup below -->
+  <meta name="csrf-token" content="<?php echo htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
 
-  <!-- bootstrap js -->
-	<script src="assests/bootstrap/js/bootstrap.min.js"></script>
+  <script>
+    // Automatically attach CSRF token to every jQuery AJAX POST request.
+    // This means individual JS files don't need to be modified.
+    $(document).ready(function() {
+      var csrfToken = $('meta[name="csrf-token"]').attr('content');
+      $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+          if(settings.type === 'POST' || settings.type === 'post') {
+            if(typeof settings.data === 'string') {
+              settings.data += (settings.data ? '&' : '') + 'csrf_token=' + encodeURIComponent(csrfToken);
+            } else if(settings.data instanceof FormData) {
+              settings.data.append('csrf_token', csrfToken);
+            } else if(typeof settings.data === 'object' && settings.data !== null) {
+              settings.data.csrf_token = csrfToken;
+            }
+          }
+        }
+      });
+    });
+  </script>
 </head>
 <body>
 
@@ -45,11 +77,9 @@
         <span class="icon-bar"></span>
         <span class="icon-bar"></span>
       </button>
-      <!-- <a class="navbar-brand" href="#">Brand</a> --> 
-            
-	              <a class="navbar-brand" href="dashboard.php"  style="padding:0px;">
-                    <img src="images/logo.jpeg" style="width: 75px; height: auto;" alt="">
-                </a>
+      <a class="navbar-brand" href="dashboard.php">
+          <img src="images/logo.jpeg" alt="Melamart Enterprises Limited">
+      </a>
     </div>
 
     <!-- Collect the nav links, forms, and other content for toggling -->
@@ -74,11 +104,14 @@
             <li id="topNavAddOrder"><a href="orders.php?o=add"> <i class="glyphicon glyphicon-plus"></i> Add Orders</a></li>            
             <li id="topNavManageOrder"><a href="orders.php?o=manord"> <i class="glyphicon glyphicon-edit"></i> Manage Orders</a></li>            
           </ul>
-        </li> 
+        </li>
+        <?php if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
+        <li id="navOverdue"><a href="overdue_reminders.php"> <i class="glyphicon glyphicon-exclamation-sign"></i> Overdue <span id="overdue-badge" class="badge"></span></a></li>
+        <?php } ?> 
 		
-		<!-- <?php  if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
+		<?php  if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
         <li id="navReport"><a href="report.php"> <i class="glyphicon glyphicon-check"></i> Report </a></li>
-		<?php } ?>    -->
+		<?php } ?>
         <li class="dropdown" id="navSetting">
           <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false"> <i class="glyphicon glyphicon-user"></i> <span class="caret"></span></a>
           <ul class="dropdown-menu">    
