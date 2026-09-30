@@ -12,3 +12,6 @@
 // define('MEL_SMS_API_KEY', 'atsk_xxxxxxxxxxxxxxxx');
 // define('MEL_SMS_SENDER_ID', '');        // leave '' until a sender ID is approved
 // define('MEL_SMS_ADMIN_PHONE', '+254758502216');
+
+// Public demo site only: stop visitors changing the shared demo login.
+// define('MEL_LOCKED_DEMO_USER', 'demo');

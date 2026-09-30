@@ -25,3 +25,17 @@ function password_error($password) {
     }
     return null;
 }
+
+/** True when the logged-in user is the shared demo login (see MEL_LOCKED_DEMO_USER). */
+function is_locked_demo_user($connect) {
+    if(MEL_LOCKED_DEMO_USER === '') {
+        return false;
+    }
+    $userId = current_user_id();
+    $stmt = $connect->prepare("SELECT username FROM users WHERE user_id = ?");
+    $stmt->bind_param('i', $userId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row && $row['username'] === MEL_LOCKED_DEMO_USER;
+}

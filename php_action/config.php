@@ -32,6 +32,11 @@ mel_define('MEL_SMS_API_KEY', '');
 mel_define('MEL_SMS_SENDER_ID', '');      // approved alphanumeric sender ID, or '' for default
 mel_define('MEL_SMS_ADMIN_PHONE', '');    // receives the daily overdue digest, e.g. '+254758502216'
 
+// ─── Public demo ───────────────────────────────────────────
+// Username of a shared demo login whose username/password cannot be changed
+// from My Account (so visitors cannot lock each other out). '' = off.
+mel_define('MEL_LOCKED_DEMO_USER', '');
+
 // ─── Invoice terms (printed at the bottom of every invoice) ─
 // Review these with management; override in config.local.php via $MEL_INVOICE_TERMS.
 if(!isset($MEL_INVOICE_TERMS)) {

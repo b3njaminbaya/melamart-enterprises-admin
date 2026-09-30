@@ -8,6 +8,10 @@ require_once 'user_input.php';
 require_post();
 csrf_verify();
 
+if(is_locked_demo_user($connect)) {
+    json_out(array('success' => false, 'messages' => 'The shared demo account cannot be changed.'));
+}
+
 $userId          = current_user_id();
 $currentPassword = $_POST['password']  ?? '';
 $newPassword     = $_POST['npassword'] ?? '';
