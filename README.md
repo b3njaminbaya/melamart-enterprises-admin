@@ -2,6 +2,16 @@
 
 Internal admin system for **Melamart Enterprises Limited** — a scaffolding and construction equipment hire and sale business operating in Ruiru and Kikuyu, Kenya.
 
+## Live demo
+
+**http://melamart-admin.infinityfreeapp.com**
+
+Sign in with the demo staff account shown on the login page (`demo` / `Demo@2026`), or click **Use demo login**.
+All clients, orders and payments are sample data. The demo runs on free hosting, so SMS reminders are switched off there;
+the staff account cannot open admin-only pages (users, equipment, reports) or change its own login.
+
+The public marketing website lives in `apps/web` — https://melamart-enterprises.vercel.app
+
 ---
 
 ## Features
@@ -21,7 +31,7 @@ Internal admin system for **Melamart Enterprises Limited** — a scaffolding and
 
 | Layer | Technology |
 |---|---|
-| Language | PHP 8.2 |
+| Language | PHP 8.1+ (tested on 8.2 and 8.4) |
 | Database | MySQL (MySQLi, prepared statements) |
 | Frontend | Bootstrap 3, jQuery, DataTables, Font Awesome |
 | Fonts | Montserrat + Open Sans (Google Fonts) |
@@ -33,9 +43,9 @@ Internal admin system for **Melamart Enterprises Limited** — a scaffolding and
 
 ## Requirements
 
-- PHP 8.0+
-- MySQL 5.7+ or MariaDB 10.3+
-- Apache with `mod_rewrite` enabled, or PHP built-in server for local development
+- PHP 8.1+ with the `mysqli` and `curl` extensions
+- MySQL 5.7+ or MariaDB 10.3+ (tested on MySQL 9.5 and MariaDB 11.4)
+- Apache (the `.htaccess` files block private folders), or the PHP built-in server for local development
 
 ---
 
@@ -44,7 +54,7 @@ Internal admin system for **Melamart Enterprises Limited** — a scaffolding and
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/your-username/melamart-enterprises-admin.git
+git clone git@github.com:benjaminmweribaya/melamart-enterprises-admin.git
 cd melamart-enterprises-admin
 ```
 
@@ -85,6 +95,7 @@ cp php_action/config.local.example.php php_action/config.local.php
 - `MEL_KRA_PIN` — printed on invoices when set.
 - `MEL_SMS_*` — Africa's Talking username/API key; enables SMS reminders.
 - `$MEL_INVOICE_TERMS` — the terms printed on invoices (review the defaults with management).
+- `MEL_LOCKED_DEMO_USER` / `MEL_DEMO_PASSWORD` — **public demo sites only**: lock the shared demo login and show it on the login page. Never set these on the real install.
 
 ### 4. Run locally
 
@@ -157,13 +168,21 @@ melamart-enterprises-admin/
 
 ## Default Login
 
-After importing the SQL schema, log in with the credentials defined in the `users` table. See `_sql/QUICK_START.md` for details.
+A fresh database from `_sql/COMPLETE_SETUP.sql` has one account: **`admin` / `admin`**. User #1 is the administrator; every other account is staff.
 
-> **Never use the default password in production.** Change it immediately after first login via My Account → Password.
+> **Never use the default password on a server.** Change it immediately after first login via My Account → Password, then create one account per staff member under Manage Users.
+
+Keep real passwords out of git: put private notes in `docs/*.local.md` (gitignored) or a password manager.
 
 ---
 
 ## Deployment
+
+| Environment | Where | How |
+|---|---|---|
+| Demo | InfinityFree (free) — http://melamart-admin.infinityfreeapp.com | FTP upload + one-time DB import |
+| Production | Paid cPanel hosting (to be purchased) | `docs/DEPLOYMENT.md`, option A |
+| Offline | Single Windows PC with XAMPP | `docs/DEPLOYMENT.md`, option B |
 
 Step-by-step checklists for hosting on a server (cPanel) or running as an offline desktop install (Windows + XAMPP): see `docs/DEPLOYMENT.md`.
 
@@ -174,6 +193,18 @@ The app connects with a restricted MySQL user (SELECT/INSERT/UPDATE/DELETE only)
 ## Cron Job
 
 A daily overdue digest SMS to the administrator runs via cron (CLI only). See `docs/CRON_SETUP.md` for the exact crontab entry and configuration.
+
+---
+
+## Documentation
+
+| File | Contents |
+|---|---|
+| `docs/DEPLOYMENT.md` | Hosting (cPanel) and offline desktop (XAMPP) checklists |
+| `docs/CRON_SETUP.md` | SMS setup and the daily overdue digest |
+| `docs/AUDIT_TODO.md` | The 2026-10 audit: every fix made, and decisions still needed from management |
+| `_sql/COMPLETE_SETUP.sql` | Fresh database |
+| `_sql/2026-10-01_audit_fixes.sql` | Migration for existing databases (safe to re-run) |
 
 ---
 
