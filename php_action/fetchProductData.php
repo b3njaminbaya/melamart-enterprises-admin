@@ -1,12 +1,15 @@
-<?php 	
-
+<?php
+/*
+ * Products that can be put on a new order line:
+ * [product_id, product_name, available quantity, daily_rate]
+ */
 require_once 'core.php';
 
-$sql = "SELECT product_id, product_name FROM product WHERE status = 1 AND active = 1";
-$result = $connect->query($sql);
+$result = $connect->query("SELECT product_id, product_name, quantity, daily_rate FROM product WHERE status = 1 AND active = 1 ORDER BY product_name");
 
-$data = $result->fetch_all();
+$data = array();
+while($row = $result->fetch_assoc()) {
+    $data[] = array((int)$row['product_id'], $row['product_name'], (int)$row['quantity'], (float)$row['daily_rate']);
+}
 
-$connect->close();
-
-echo json_encode($data);
+json_out($data);

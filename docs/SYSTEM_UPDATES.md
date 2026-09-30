@@ -1,5 +1,7 @@
 # Construction Equipment Rental System - Update Summary
 
+> **Superseded (2026-10-01):** `updateLateFees.php`, `checkOverdue.php` and `sms_reminder.php` described below were removed — they double-charged late fees and could not run. Late charges are now applied when a return is recorded, and SMS works as described in `CRON_SETUP.md`. See `AUDIT_TODO.md` for the full list of changes.
+
 ## Overview
 This system has been updated from a general inventory management system to a specialized construction equipment rental management system.
 

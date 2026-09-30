@@ -1,29 +1,24 @@
 <?php
+/*
+ * The logged-in user changes their own username.
+ */
 require_once 'core.php';
-require_once 'csrf.php';
+require_once 'user_input.php';
 
-$valid = ['success' => false, 'messages' => ''];
+require_post();
+csrf_verify();
 
-if($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
+$userId = current_user_id();
+$username = trim($_POST['username'] ?? '');
 
-    $username = trim($_POST['username'] ?? '');
-    $userId   = intval($_POST['user_id'] ?? 0);
-
-    if($username === '' || $userId === 0) {
-        $valid['messages'] = "Username and user ID are required.";
-        echo json_encode($valid); exit();
-    }
-
-    $stmt = $connect->prepare("UPDATE users SET username = ? WHERE user_id = ?");
-    $stmt->bind_param("si", $username, $userId);
-
-    if($stmt->execute()) {
-        $valid['success']  = true;
-        $valid['messages'] = "Username updated successfully.";
-    } else {
-        $valid['messages'] = "Error while updating username.";
-    }
-    $stmt->close();
-    echo json_encode($valid);
+$error = username_error($connect, $username, $userId);
+if($error) {
+    json_out(array('success' => false, 'messages' => $error));
 }
+
+$stmt = $connect->prepare("UPDATE users SET username = ? WHERE user_id = ?");
+$stmt->bind_param("si", $username, $userId);
+$stmt->execute();
+$stmt->close();
+
+json_out(array('success' => true, 'messages' => 'Your username is now ' . $username . '.'));

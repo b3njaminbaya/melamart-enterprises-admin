@@ -1,29 +1,28 @@
-<?php	
+<?php
 require_once 'core.php';
 
-$productId = $_POST['productId'];
+$productId = (int)($_POST['productId'] ?? 0);
 
-$sql = "SELECT product_id, product_name, product_image, brand_id, categories_id, quantity, rate, daily_rate, active, status FROM product WHERE product_id = $productId";
-$result = $connect->query($sql);
+$stmt = $connect->prepare("SELECT product_id, product_name, product_image, brand_id, categories_id, quantity, rate, daily_rate, active, status FROM product WHERE product_id = ?");
+$stmt->bind_param('i', $productId);
+$stmt->execute();
+$row = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-if($result->num_rows > 0) { 
-    $row = $result->fetch_array();
-    
-    // Create a proper response with all fields
-    $response = array(
-        'product_id' => $row[0],
-        'product_name' => $row[1],
-        'product_image' => $row[2],
-        'brand_id' => $row[3],
-        'categories_id' => $row[4],
-        'quantity' => $row[5],
-        'rate' => $row[6],          // Purchase price
-        'daily_rate' => $row[7],    // Rental price per day
-        'active' => $row[8],
-        'status' => $row[9]
-    );
+if(!$row) {
+    json_out(array('success' => false, 'messages' => 'Product not found.'), 404);
 }
 
-$connect->close();
-echo json_encode($response);
-?>
+json_out(array(
+    'success'       => true,
+    'product_id'    => (int)$row['product_id'],
+    'product_name'  => $row['product_name'],
+    'product_image' => $row['product_image'],
+    'brand_id'      => (int)$row['brand_id'],
+    'categories_id' => (int)$row['categories_id'],
+    'quantity'      => (int)$row['quantity'],
+    'rate'          => $row['rate'],          // purchase cost
+    'daily_rate'    => $row['daily_rate'],    // hire price per day
+    'active'        => (int)$row['active'],
+    'status'        => (int)$row['status'],
+));

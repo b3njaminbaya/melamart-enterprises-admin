@@ -1,0 +1,10 @@
+# Include-only files: never requested directly by the browser.
+<FilesMatch "^(config|config\.local|config\.local\.example|helpers|order_service|report_query|product_input|user_input|sms|csrf|db_connect|db_connect\.example)\.php$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>

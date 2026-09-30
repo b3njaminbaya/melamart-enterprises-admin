@@ -1,7 +1,8 @@
 <?php
+require_once 'php_action/helpers.php';
 require_once 'php_action/db_connect.php';
 
-session_start();
+mel_start_session();
 
 // Already logged in → go to dashboard
 if(isset($_SESSION['userId'])) {
@@ -23,8 +24,8 @@ if($_SERVER['REQUEST_METHOD'] === 'POST') {
         /*
          * Prepared statement — eliminates SQL injection.
          * We select the stored hash and verify it with password_verify()
-         * (bcrypt). The auth_helper.php fallback handles legacy MD5 accounts
-         * transparently and upgrades them on first successful login.
+         * (bcrypt). Legacy MD5 accounts are verified once and upgraded
+         * to bcrypt on the first successful login.
          */
         $stmt = $connect->prepare(
             "SELECT user_id, password FROM users WHERE username = ? LIMIT 1"
@@ -57,7 +58,7 @@ if($_SERVER['REQUEST_METHOD'] === 'POST') {
             if($verified) {
                 // Prevent session fixation
                 session_regenerate_id(true);
-                $_SESSION['userId'] = $user['user_id'];
+                $_SESSION['userId'] = (int)$user['user_id'];
                 $stmt->close();
                 header('Location: dashboard.php');
                 exit();

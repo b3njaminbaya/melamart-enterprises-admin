@@ -61,3 +61,10 @@ Desktop.ini
 # PHP built-in server log (php -S)
 # -----------------------------------------------
 *.pid
+
+# Local business overrides / secrets (SMS keys, KRA PIN)
+php_action/config.local.php
+
+# SMS cron log
+storage/logs/*
+!storage/logs/.gitkeep

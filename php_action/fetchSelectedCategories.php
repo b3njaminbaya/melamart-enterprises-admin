@@ -1,16 +1,17 @@
-<?php 	
-
+<?php
 require_once 'core.php';
 
-$categoriesId = $_POST['categoriesId'];
+require_admin();
 
-$sql = "SELECT categories_id, categories_name, categories_active, categories_status FROM categories WHERE categories_id = $categoriesId";
-$result = $connect->query($sql);
+$id = (int)($_POST['categoriesId'] ?? 0);
+$stmt = $connect->prepare("SELECT categories_id, categories_name, categories_active FROM categories WHERE categories_id = ? AND categories_status = 1");
+$stmt->bind_param('i', $id);
+$stmt->execute();
+$row = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-if($result->num_rows > 0) { 
- $row = $result->fetch_array();
-} // if num_rows
+if(!$row) {
+    json_out(array('success' => false, 'messages' => 'Category not found.'), 404);
+}
 
-$connect->close();
-
-echo json_encode($row);
+json_out(array('success' => true, 'id' => (int)$row['categories_id'], 'name' => $row['categories_name'], 'active' => (int)$row['categories_active']));

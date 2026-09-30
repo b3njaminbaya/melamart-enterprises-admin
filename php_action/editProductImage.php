@@ -1,37 +1,27 @@
-<?php 	
-
+<?php
 require_once 'core.php';
+require_once 'product_input.php';
 
-$valid['success'] = array('success' => false, 'messages' => array());
+require_admin();
+require_post();
+csrf_verify();
 
-if($_POST) {		
+$productId = (int)($_POST['productId'] ?? 0);
+if($productId <= 0) {
+    json_out(array('success' => false, 'messages' => 'Invalid product.'));
+}
+if(!isset($_FILES['editProductImage']) || $_FILES['editProductImage']['error'] === UPLOAD_ERR_NO_FILE) {
+    json_out(array('success' => false, 'messages' => 'Choose a photo to upload.'));
+}
 
-$productId = $_POST['productId'];
- 
-$type = explode('.', $_FILES['editProductImage']['name']);
-	$type = $type[count($type)-1];		
-	$url = '../assets/images/stock/'.uniqid(rand()).'.'.$type;
-	if(in_array($type, array('gif', 'jpg', 'jpeg', 'png', 'JPG', 'GIF', 'JPEG', 'PNG'))) {
-		if(is_uploaded_file($_FILES['editProductImage']['tmp_name'])) {			
-			if(move_uploaded_file($_FILES['editProductImage']['tmp_name'], $url)) {
+list($url, $uploadError) = store_product_image($_FILES['editProductImage']);
+if($uploadError) {
+    json_out(array('success' => false, 'messages' => $uploadError));
+}
 
-				$sql = "UPDATE product SET product_image = '$url' WHERE product_id = $productId";				
+$stmt = $connect->prepare("UPDATE product SET product_image = ? WHERE product_id = ?");
+$stmt->bind_param('si', $url, $productId);
+$stmt->execute();
+$stmt->close();
 
-				if($connect->query($sql) === TRUE) {									
-					$valid['success'] = true;
-					$valid['messages'] = "Successfully Updated";	
-				} else {
-					$valid['success'] = false;
-					$valid['messages'] = "Error while updating product image";
-				}
-			}	else {
-				return false;
-			}	// /else	
-		} // if
-	} // if in_array 		
-	 
-	$connect->close();
-
-	echo json_encode($valid);
- 
-} // /if $_POST
+json_out(array('success' => true, 'messages' => 'Photo updated.', 'image_url' => preg_replace('#^\.\./#', '', $url)));

@@ -1,47 +1,31 @@
-<?php 	
-
-
-
+<?php
 require_once 'core.php';
 
-$sql = "SELECT * FROM users";
+require_admin();
 
-$result = $connect->query($sql);
+$result = $connect->query("SELECT u.user_id, u.username, u.email,
+        (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.user_id) AS order_count
+    FROM users u ORDER BY u.user_id");
 
 $output = array('data' => array());
-if($result->num_rows > 0) { 
-
- // $row = $result->fetch_array();
- $active = ""; 
-
- while($row = $result->fetch_array()) {
- 	$userid = $row[0];
- 	// active 
- 	$username = $row[1];
-
- 	$button = '<!-- Single button -->
-	<div class="btn-group">
-	  <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+while($row = $result->fetch_assoc()) {
+    $userId = (int)$row['user_id'];
+    $name = h($row['username']);
+    if($userId === 1) {
+        $name .= ' <span class="label label-info">Administrator</span>';
+    }
+    $actions = '<li><a href="#" onclick="editUser(' . $userId . '); return false;"><i class="glyphicon glyphicon-edit"></i> Edit</a></li>';
+    if($userId !== 1 && $userId !== current_user_id()) {
+        $actions .= '<li><a href="#" onclick="removeUser(' . $userId . '); return false;"><i class="glyphicon glyphicon-trash"></i> Remove</a></li>';
+    }
+    $button = '<div class="btn-group">
+	  <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
 	    Action <span class="caret"></span>
 	  </button>
-	  <ul class="dropdown-menu">
-	    <li><a type="button" data-toggle="modal" id="editUserModalBtn" data-target="#editUserModal" onclick="editUser('.$userid.')"> <i class="glyphicon glyphicon-edit"></i> Edit</a></li>
-	    <li><a type="button" data-toggle="modal" data-target="#removeUserModal" id="removeUserModalBtn" onclick="removeUser('.$userid.')"> <i class="glyphicon glyphicon-trash"></i> Remove</a></li>       
-	  </ul>
+	  <ul class="dropdown-menu dropdown-menu-right">' . $actions . '</ul>
 	</div>';
 
-	
+    $output['data'][] = array($name, h($row['email']), (int)$row['order_count'], $button);
+}
 
- 	$output['data'][] = array( 		
- 		// name
- 		$username,
- 		// button
- 		$button 		
- 		); 	
- } // /while 
-
-}// if num_rows
-
-$connect->close();
-
-echo json_encode($output);
+json_out($output);

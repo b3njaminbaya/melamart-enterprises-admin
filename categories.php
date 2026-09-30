@@ -1,168 +1,116 @@
 <?php require_once 'includes/header.php'; ?>
-
+<?php require_admin(); ?>
 
 <div class="row">
 	<div class="col-md-12">
 
 		<ol class="breadcrumb">
-		  <li><a href="dashboard.php">Home</a></li>		  
-		  <li class="active">Category</li>
+		  <li><a href="dashboard.php">Home</a></li>
+		  <li class="active">Categories</li>
 		</ol>
 
 		<div class="panel panel-default">
 			<div class="panel-heading">
-				<div class="page-heading"> <i class="glyphicon glyphicon-edit"></i> Manage Categories</div>
+				<div class="page-heading"> <i class="glyphicon glyphicon-th-list"></i> Manage Categories</div>
 			</div> <!-- /panel-heading -->
 			<div class="panel-body">
 
-				<div class="remove-messages"></div>
-
 				<div class="div-action pull pull-right" style="padding-bottom:20px;">
-					<button class="btn btn-default button1" data-toggle="modal" id="addCategoriesModalBtn" data-target="#addCategoriesModal"> <i class="glyphicon glyphicon-plus-sign"></i> Add Categories </button>
-				</div> <!-- /div-action -->				
-				
-				<table class="table" id="manageCategoriesTable">
+					<button class="btn btn-primary" id="addCategoryBtn"> <i class="glyphicon glyphicon-plus-sign"></i> Add Category </button>
+				</div> <!-- /div-action -->
+
+				<table class="table" id="manageCategoryTable" style="width:100%;">
 					<thead>
-						<tr>							
-							<th>Categories Name</th>
+						<tr>
+							<th>Category</th>
+							<th class="text-right">Products</th>
 							<th>Status</th>
-							<th style="width:15%;">Options</th>
+							<th style="width:90px;"></th>
 						</tr>
 					</thead>
 				</table>
-				<!-- /table -->
 
 			</div> <!-- /panel-body -->
-		</div> <!-- /panel -->		
+		</div> <!-- /panel -->
 	</div> <!-- /col-md-12 -->
 </div> <!-- /row -->
 
-
-<!-- add categories -->
-<div class="modal fade" id="addCategoriesModal" tabindex="-1" role="dialog">
+<!-- add / edit category (one modal) -->
+<div class="modal fade" id="categoryModal" tabindex="-1" role="dialog">
   <div class="modal-dialog">
     <div class="modal-content">
-
-    	<form class="form-horizontal" id="submitCategoriesForm" action="php_action/createCategories.php" method="POST">
+    	<form class="form-horizontal" id="categoryForm" method="POST" novalidate>
 	      <div class="modal-header">
 	        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-	        <h4 class="modal-title"><i class="fa fa-plus"></i> Add Categories</h4>
+	        <h4 class="modal-title" id="categoryModalTitle">Add Category</h4>
 	      </div>
 	      <div class="modal-body">
-
-	      	<div id="add-categories-messages"></div>
+	      	<div id="category-messages"></div>
+	      	<input type="hidden" id="categoryId">
 
 	        <div class="form-group">
-	        	<label for="categoriesName" class="col-sm-4 control-label">Categories Name: </label>
-	        	<label class="col-sm-1 control-label">: </label>
-				    <div class="col-sm-7">
-				      <input type="text" class="form-control" id="categoriesName" placeholder="Categories Name" name="categoriesName" autocomplete="off">
-				    </div>
-	        </div> <!-- /form-group-->	         	        
+	        	<label for="categoryName" class="col-sm-3 control-label">Name *</label>
+			    <div class="col-sm-9">
+			      <input type="text" class="form-control" id="categoryName" autocomplete="off">
+			    </div>
+	        </div>
 	        <div class="form-group">
-	        	<label for="categoriesStatus" class="col-sm-4 control-label">Status: </label>
-	        	<label class="col-sm-1 control-label">: </label>
-				    <div class="col-sm-7">
-				      <select class="form-control" id="categoriesStatus" name="categoriesStatus">
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1">Available</option>
-				      	<option value="2">Not Available</option>
-				      </select>
-				    </div>
-	        </div> <!-- /form-group-->	         	        
+	        	<label for="categoryStatus" class="col-sm-3 control-label">Status *</label>
+			    <div class="col-sm-9">
+			      <select class="form-control" id="categoryStatus">
+			      	<option value="1">Available</option>
+			      	<option value="2">Not available</option>
+			      </select>
+			      <p class="help-block small">"Not available" hides it when adding or editing products.</p>
+			    </div>
+	        </div>
 	      </div> <!-- /modal-body -->
-	      
+
 	      <div class="modal-footer">
-	        <button type="button" class="btn btn-default" data-dismiss="modal"> <i class="glyphicon glyphicon-remove-sign"></i> Close</button>
-	        
-	        <button type="submit" class="btn btn-primary" id="createCategoriesBtn" data-loading-text="Loading..." autocomplete="off"> <i class="glyphicon glyphicon-ok-sign"></i> Save Changes</button>
-	      </div> <!-- /modal-footer -->	      
-     	</form> <!-- /.form -->	     
-    </div> <!-- /modal-content -->    
-  </div> <!-- /modal-dailog -->
-</div> 
-<!-- /add categories -->
-
-
-<!-- edit categories brand -->
-<div class="modal fade" id="editCategoriesModal" tabindex="-1" role="dialog">
-  <div class="modal-dialog">
-    <div class="modal-content">
-    	
-    	<form class="form-horizontal" id="editCategoriesForm" action="php_action/editCategories.php" method="POST">
-	      <div class="modal-header">
-	        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-	        <h4 class="modal-title"><i class="fa fa-edit"></i> Edit Categories</h4>
+	        <button type="button" class="btn btn-link" data-dismiss="modal">Close</button>
+	        <button type="submit" class="btn btn-primary" id="saveCategoryBtn" data-loading-text="Saving…"><i class="glyphicon glyphicon-ok-sign"></i> Save</button>
 	      </div>
-	      <div class="modal-body">
-
-	      	<div id="edit-categories-messages"></div>
-
-	      	<div class="modal-loading div-hide" style="width:50px; margin:auto;padding-top:50px; padding-bottom:50px;">
-						<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>
-						<span class="sr-only">Loading...</span>
-					</div>
-
-		      <div class="edit-categories-result">
-		      	<div class="form-group">
-		        	<label for="editCategoriesName" class="col-sm-4 control-label">Categories Name: </label>
-		        	<label class="col-sm-1 control-label">: </label>
-					    <div class="col-sm-7">
-					      <input type="text" class="form-control" id="editCategoriesName" placeholder="Categories Name" name="editCategoriesName" autocomplete="off">
-					    </div>
-		        </div> <!-- /form-group-->	         	        
-		        <div class="form-group">
-		        	<label for="editCategoriesStatus" class="col-sm-4 control-label">Status: </label>
-		        	<label class="col-sm-1 control-label">: </label>
-					    <div class="col-sm-7">
-					      <select class="form-control" id="editCategoriesStatus" name="editCategoriesStatus">
-					      	<option value="">~~SELECT~~</option>
-					      	<option value="1">Available</option>
-					      	<option value="2">Not Available</option>
-					      </select>
-					    </div>
-		        </div> <!-- /form-group-->	 
-		      </div>         	        
-		      <!-- /edit brand result -->
-
-	      </div> <!-- /modal-body -->
-	      
-	      <div class="modal-footer editCategoriesFooter">
-	        <button type="button" class="btn btn-default" data-dismiss="modal"> <i class="glyphicon glyphicon-remove-sign"></i> Close</button>
-	        
-	        <button type="submit" class="btn btn-success" id="editCategoriesBtn" data-loading-text="Loading..." autocomplete="off"> <i class="glyphicon glyphicon-ok-sign"></i> Save Changes</button>
-	      </div>
-	      <!-- /modal-footer -->
      	</form>
-	     <!-- /.form -->
     </div>
-    <!-- /modal-content -->
   </div>
-  <!-- /modal-dailog -->
 </div>
-<!-- /categories brand -->
 
-<!-- categories brand -->
-<div class="modal fade" tabindex="-1" role="dialog" id="removeCategoriesModal">
+<!-- remove category -->
+<div class="modal fade" tabindex="-1" role="dialog" id="removeCategoryModal">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-        <h4 class="modal-title"><i class="glyphicon glyphicon-trash"></i> Remove Brand</h4>
+        <h4 class="modal-title"><i class="glyphicon glyphicon-trash"></i> Remove category</h4>
       </div>
       <div class="modal-body">
-        <p>Do you really want to remove ?</p>
+      	<div class="removeCategoryMessages"></div>
+        <p>Remove <strong id="removeCategoryName"></strong>?</p>
       </div>
-      <div class="modal-footer removeCategoriesFooter">
-        <button type="button" class="btn btn-default" data-dismiss="modal"> <i class="glyphicon glyphicon-remove-sign"></i> Close</button>
-        <button type="button" class="btn btn-primary" id="removeCategoriesBtn" data-loading-text="Loading..."> <i class="glyphicon glyphicon-ok-sign"></i> Save changes</button>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link" data-dismiss="modal">Keep</button>
+        <button type="button" class="btn btn-danger" id="removeCategoryBtn" data-loading-text="Removing…"><i class="glyphicon glyphicon-trash"></i> Remove</button>
       </div>
-    </div><!-- /.modal-content -->
-  </div><!-- /.modal-dialog -->
-</div><!-- /.modal -->
-<!-- /categories brand -->
+    </div>
+  </div>
+</div>
 
-
-<script src="custom/js/categories.js"></script>
+<script>
+	var CRUD = {
+		label: 'Category',
+		nav: '#navCategories',
+		fetchUrl: 'php_action/fetchCategories.php',
+		fetchOneUrl: 'php_action/fetchSelectedCategories.php',
+		fetchOneParam: 'categoriesId',
+		createUrl: 'php_action/createCategories.php',
+		createFields: { name: 'categoriesName', status: 'categoriesStatus' },
+		editUrl: 'php_action/editCategories.php',
+		editFields: { name: 'editCategoriesName', status: 'editCategoriesStatus', id: 'editCategoriesId' },
+		removeUrl: 'php_action/removeCategories.php',
+		removeParam: 'categoriesId',
+		prefix: 'category'
+	};
+</script>
+<script src="custom/js/simpleCrud.js"></script>
 
 <?php require_once 'includes/footer.php'; ?>

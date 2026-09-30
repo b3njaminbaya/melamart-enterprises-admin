@@ -1,127 +1,86 @@
-<?php 	
-
+<?php
+/*
+ * Manage Orders table data. ?status= onhire | overdue | completed | cancelled | all
+ * (default: everything except cancelled). All text is HTML-escaped here.
+ */
 require_once 'core.php';
 
-$sql = "SELECT order_id, order_date, expect_return_date, returned_date, site_location, client_name, client_contact, driver_name, driver_contact, returned_by, returned_by_contact, approved_by, grand_total, paid, due, payment_type, payment_status, order_status FROM orders WHERE order_status != 2";
+$filter = $_GET['status'] ?? '';
+$today = date('Y-m-d');
+
+$where = "o.order_status != 2";
+switch($filter) {
+    case 'onhire':    $where = "o.order_status = 0 AND o.returned_date IS NULL"; break;
+    case 'overdue':   $where = "o.order_status = 0 AND o.returned_date IS NULL AND o.expect_return_date < '" . $today . "'"; break;
+    case 'completed': $where = "o.order_status = 1"; break;
+    case 'cancelled': $where = "o.order_status = 2"; break;
+    case 'all':       $where = "1 = 1"; break;
+}
+
+$sql = "SELECT o.order_id, o.order_date, o.expect_return_date, o.returned_date, o.site_location, o.client_name,
+               o.client_contact, o.grand_total, o.paid, o.due, o.payment_status, o.payment_place, o.order_status
+        FROM orders o
+        WHERE $where
+        ORDER BY o.order_id DESC";
 $result = $connect->query($sql);
 
+$statusLabels = array(0 => 'label-info', 1 => 'label-success', 2 => 'label-default');
+$paymentLabels = array(1 => 'label-success', 2 => 'label-warning', 3 => 'label-danger');
+
 $output = array('data' => array());
+while($row = $result->fetch_assoc()) {
+    $orderId = (int)$row['order_id'];
+    $status = (int)$row['order_status'];
+    $onHire = $status === 0 && !has_date($row['returned_date']);
+    $overdueDays = 0;
+    if($onHire && $row['expect_return_date'] < $today) {
+        $overdueDays = hire_days($row['expect_return_date'], $today) - 1;
+    }
 
-if($result->num_rows > 0) { 
- 
- $paymentStatus = ""; 
- $orderStatus = "";
- $x = 1;
+    $expected = h(format_date($row['expect_return_date']));
+    if($overdueDays > 0) {
+        $expected .= ' <span class="label label-danger" title="Not yet returned">' . $overdueDays . ' day' . ($overdueDays === 1 ? '' : 's') . ' overdue</span>';
+    }
 
- while($row = $result->fetch_array()) {
- 	$orderId = $row[0];
+    $returned = has_date($row['returned_date'])
+        ? h(format_date($row['returned_date']))
+        : '<span class="text-muted">' . ($status === 2 ? '—' : 'On hire') . '</span>';
 
- 	$countOrderItemSql = "SELECT count(*) FROM order_item WHERE order_id = $orderId";
- 	$itemCountResult = $connect->query($countOrderItemSql);
- 	$itemCountRow = $itemCountResult->fetch_row();
+    $paymentStatus = (int)$row['payment_status'];
+    $due = (float)$row['due'];
 
- 	// Format dates for display
- 	$orderDate = date("d/m/Y", strtotime($row[1]));
- 	$expectReturnDate = ($row[2] != '0000-00-00' && $row[2] != NULL) ? date("d/m/Y", strtotime($row[2])) : 'Not Set';
- 	$returnedDate = ($row[3] != '0000-00-00' && $row[3] != NULL) ? date("d/m/Y", strtotime($row[3])) : 'Not Returned';
-
- 	// payment type
- 	$paymentType = "";
- 	if($row[15] == 1) { 		
- 		$paymentType = "<label class='label label-info'>Cheque</label>";
- 	} else if($row[15] == 2) { 		
- 		$paymentType = "<label class='label label-success'>Cash</label>";
- 	} else if($row[15] == 3) { 		
- 		$paymentType = "<label class='label label-primary'>Credit Card</label>";
- 	} else { 		
- 		$paymentType = "<label class='label label-default'>N/A</label>";
- 	} // /else
-
- 	// payment status 
- 	if($row[16] == 1) { 		
- 		$paymentStatus = "<label class='label label-success'>Full Payment</label>";
- 	} else if($row[16] == 2) { 		
- 		$paymentStatus = "<label class='label label-info'>Advance Payment</label>";
- 	} else { 		
- 		$paymentStatus = "<label class='label label-warning'>No Payment</label>";
- 	} // /else
-
- 	// order status
- 	if($row[17] == 0) { 		
- 		$orderStatus = "<label class='label label-default'>Pending</label>";
- 	} else if($row[17] == 1) { 		
- 		$orderStatus = "<label class='label label-primary'>Completed</label>";
- 	} else if($row[17] == 2) { 		
- 		$orderStatus = "<label class='label label-danger'>Cancelled</label>";
- 	} else {
- 		$orderStatus = "<label class='label label-default'>Unknown</label>";
- 	} // /else
-
- 	$button = '<!-- Single button -->
-	<div class="btn-group">
-	  <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+    $actions = '<li><a href="orders.php?o=editOrd&i=' . $orderId . '"><i class="glyphicon glyphicon-edit"></i> ' . ($onHire ? 'Edit / Record return' : 'View / Edit') . '</a></li>';
+    if($status !== 2 && $due > 0) {
+        $actions .= '<li><a href="#" onclick="paymentOrder(' . $orderId . '); return false;"><i class="glyphicon glyphicon-usd"></i> Record payment</a></li>';
+    } elseif($status !== 2) {
+        $actions .= '<li><a href="#" onclick="paymentOrder(' . $orderId . '); return false;"><i class="glyphicon glyphicon-list-alt"></i> Payment history</a></li>';
+    }
+    $actions .= '<li><a href="#" onclick="printOrder(' . $orderId . '); return false;"><i class="glyphicon glyphicon-print"></i> Print invoice</a></li>';
+    if($status === 0) {
+        $actions .= '<li role="separator" class="divider"></li>'
+                  . '<li><a href="#" style="color:#c62828;" onclick="removeOrder(' . $orderId . '); return false;"><i class="glyphicon glyphicon-ban-circle"></i> Cancel order</a></li>';
+    }
+    $button = '<div class="btn-group">
+	  <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
 	    Action <span class="caret"></span>
 	  </button>
-	  <ul class="dropdown-menu">
-	    <li><a href="orders.php?o=editOrd&i='.$orderId.'" id="editOrderModalBtn"> <i class="glyphicon glyphicon-edit"></i> Edit</a></li>
-	    
-	    <li><a type="button" data-toggle="modal" id="paymentOrderModalBtn" data-target="#paymentOrderModal" onclick="paymentOrder('.$orderId.')"> <i class="glyphicon glyphicon-save"></i> Payment</a></li>
+	  <ul class="dropdown-menu dropdown-menu-right">' . $actions . '</ul>
+	</div>';
 
-	    <li><a type="button" onclick="printOrder('.$orderId.')"> <i class="glyphicon glyphicon-print"></i> Print </a></li>';
-	    
-	// Only show remove option for pending orders
-	if($row[17] == 0) {
-		$button .= '<li><a type="button" data-toggle="modal" data-target="#removeOrderModal" id="removeOrderModalBtn" onclick="removeOrder('.$orderId.')"> <i class="glyphicon glyphicon-trash"></i> Remove</a></li>';
-	}
-	
-	$button .= '</ul>
-	</div>';		
+    $output['data'][] = array(
+        'id'        => array('display' => '<strong>#' . $orderId . '</strong>', 'sort' => $orderId),
+        'date'      => array('display' => h(format_date($row['order_date'])), 'sort' => $row['order_date']),
+        'client'    => h($row['client_name']) . '<span class="sub"><a href="tel:' . h($row['client_contact']) . '">' . h(format_phone($row['client_contact'])) . '</a></span>',
+        'site'      => h($row['site_location']) . '<span class="sub">' . h(branch_label($row['payment_place'])) . ' branch</span>',
+        'expected'  => array('display' => $expected, 'sort' => $row['expect_return_date']),
+        'returned'  => array('display' => $returned, 'sort' => (string)$row['returned_date']),
+        'total'     => array('display' => money($row['grand_total']), 'sort' => (float)$row['grand_total']),
+        'paid'      => array('display' => money($row['paid']), 'sort' => (float)$row['paid']),
+        'due'       => array('display' => $due > 0 ? '<strong>' . money($due) . '</strong>' : money($due), 'sort' => $due),
+        'payment'   => '<span class="label ' . ($paymentLabels[$paymentStatus] ?? 'label-default') . '">' . h(payment_status_label($paymentStatus)) . '</span>',
+        'status'    => '<span class="label ' . ($statusLabels[$status] ?? 'label-default') . '">' . h(order_status_label($status)) . '</span>',
+        'action'    => $button,
+    );
+}
 
- 	$output['data'][] = array( 		
- 		// serial number
- 		$x,
- 		// order date
- 		$orderDate,
- 		// expected return date
- 		$expectReturnDate,
- 		// returned date
- 		$returnedDate,
- 		// site location
- 		$row[4],
- 		// client name
- 		$row[5], 
- 		// client contact
- 		$row[6], 
-		// driver name
- 		$row[7], 
- 		// driver contact
- 		$row[8],
- 		// returned by
- 		$row[9] ?: 'N/A',
- 		// returned by contact
- 		$row[10] ?: 'N/A',
- 		// approved by
- 		$row[11] ?: 'N/A',
- 		// grand total
- 		'Ksh ' . number_format($row[12], 2),
- 		// paid amount
- 		'Ksh ' . number_format($row[13], 2),
- 		// due amount
- 		'Ksh ' . number_format($row[14], 2),
- 		// payment type
- 		$paymentType,
- 		// payment status
- 		$paymentStatus,
- 		// order status
- 		$orderStatus,
- 		// button
- 		$button 		
- 		); 	
- 	$x++;
- } // /while 
-
-}// if num_rows
-
-$connect->close();
-
-echo json_encode($output);
+json_out($output);

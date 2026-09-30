@@ -1,747 +1,409 @@
-<?php 
-require_once 'php_action/db_connect.php'; 
-require_once 'includes/header.php'; 
+<?php
+require_once 'includes/header.php';
 
-if($_GET['o'] == 'add') { 
-// add order
-	echo "<div class='div-request div-hide'>add</div>";
-} else if($_GET['o'] == 'manord') { 
-	echo "<div class='div-request div-hide'>manord</div>";
-} else if($_GET['o'] == 'editOrd') { 
-	echo "<div class='div-request div-hide'>editOrd</div>";
-} // /else manage order
+$mode = $_GET['o'] ?? 'manord';
+if(!in_array($mode, array('add', 'manord', 'editOrd'), true)) {
+	$mode = 'manord';
+}
 
+$flash = $_SESSION['flash'] ?? '';
+unset($_SESSION['flash']);
 
+$order = null;
+$orderItems = array();
+if($mode === 'editOrd') {
+	$orderId = (int)($_GET['i'] ?? 0);
+	$stmt = $connect->prepare("SELECT * FROM orders WHERE order_id = ?");
+	$stmt->bind_param('i', $orderId);
+	$stmt->execute();
+	$order = $stmt->get_result()->fetch_assoc();
+	$stmt->close();
+
+	if(!$order) {
+		echo '<div class="alert alert-warning" style="margin-top:20px;">Order not found. <a href="orders.php?o=manord">Back to orders</a></div>';
+		require_once 'includes/footer.php';
+		exit();
+	}
+
+	$stmt = $connect->prepare("SELECT product_id, quantity, rental_days, rate FROM order_item WHERE order_id = ? ORDER BY order_item_id");
+	$stmt->bind_param('i', $orderId);
+	$stmt->execute();
+	$res = $stmt->get_result();
+	while($row = $res->fetch_assoc()) {
+		$orderItems[] = array(
+			'product_id'  => (int)$row['product_id'],
+			'quantity'    => (int)$row['quantity'],
+			'rental_days' => max(1, (int)$row['rental_days']),
+			'rate'        => (float)$row['rate'],
+		);
+	}
+	$stmt->close();
+}
+
+if($mode === 'add' || $mode === 'editOrd') {
+	// Products that can be picked, with how many are available to this order.
+	$heldByOrder = array();
+	if($order && order_holds_stock($order['order_status'], $order['returned_date'])) {
+		foreach($orderItems as $item) {
+			$heldByOrder[$item['product_id']] = ($heldByOrder[$item['product_id']] ?? 0) + $item['quantity'];
+		}
+	}
+	$products = array();
+	$res = $connect->query("SELECT product_id, product_name, quantity, daily_rate, active, status FROM product ORDER BY product_name");
+	while($row = $res->fetch_assoc()) {
+		$pid = (int)$row['product_id'];
+		$isHireable = (int)$row['active'] === 1 && (int)$row['status'] === 1;
+		$onThisOrder = false;
+		foreach($orderItems as $item) {
+			if($item['product_id'] === $pid) { $onThisOrder = true; }
+		}
+		if(!$isHireable && !$onThisOrder) {
+			continue;
+		}
+		$products[] = array(
+			'id'        => $pid,
+			'name'      => $row['product_name'],
+			'available' => (int)$row['quantity'] + ($heldByOrder[$pid] ?? 0),
+			'rate'      => (float)$row['daily_rate'],
+		);
+	}
+}
+
+$isEdit = $mode === 'editOrd';
+$val = function($key, $default = '') use ($order) {
+	return $order ? $order[$key] : $default;
+};
+$jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+$pageTitle = $mode === 'add' ? 'New Order' : ($isEdit ? 'Order #' . (int)$order['order_id'] : 'Manage Orders');
 ?>
+
+<div class="div-request div-hide"><?php echo h($mode); ?></div>
 
 <ol class="breadcrumb">
   <li><a href="dashboard.php">Home</a></li>
-  <li>Order</li>
-  <li class="active">
-  	<?php if($_GET['o'] == 'add') { ?>
-  		Add Order
-		<?php } else if($_GET['o'] == 'manord') { ?>
-			Manage Order
-		<?php } // /else manage order ?>
-  </li>
+  <li><a href="orders.php?o=manord">Orders</a></li>
+  <li class="active"><?php echo h($pageTitle); ?></li>
 </ol>
 
-
-<h4>
-	<i class='glyphicon glyphicon-circle-arrow-right'></i>
-	<?php if($_GET['o'] == 'add') {
-		echo "Add Order";
-	} else if($_GET['o'] == 'manord') { 
-		echo "Manage Order";
-	} else if($_GET['o'] == 'editOrd') { 
-		echo "Edit Order";
-	}
-	?>	
-</h4>
-
-
+<?php if($flash !== '') { ?>
+<div class="alert alert-success"><button type="button" class="close" data-dismiss="alert">&times;</button><i class="glyphicon glyphicon-ok-sign"></i> <?php echo h($flash); ?></div>
+<?php } ?>
 
 <div class="panel panel-default">
 	<div class="panel-heading">
-
-		<?php if($_GET['o'] == 'add') { ?>
-  		<i class="glyphicon glyphicon-plus-sign"></i>	Add Order
-		<?php } else if($_GET['o'] == 'manord') { ?>
-			<i class="glyphicon glyphicon-edit"></i> Manage Order
-		<?php } else if($_GET['o'] == 'editOrd') { ?>
-			<i class="glyphicon glyphicon-edit"></i> Edit Order
+		<?php if($mode === 'add') { ?>
+			<i class="glyphicon glyphicon-plus-sign"></i> New Order
+		<?php } elseif($mode === 'manord') { ?>
+			<i class="glyphicon glyphicon-list"></i> Manage Orders
+		<?php } else { ?>
+			<i class="glyphicon glyphicon-edit"></i> Order #<?php echo (int)$order['order_id']; ?>
+			— <?php echo h(order_status_label($order['order_status'])); ?>
 		<?php } ?>
-
-	</div> <!--/panel-->	
+	</div>
 	<div class="panel-body">
-			
-		<?php if($_GET['o'] == 'add') { 
-			// add order
-			?>			
 
-			<div class="success-messages"></div> <!--/success-messages-->
+	<?php if($mode === 'manord') { ?>
 
-  		<form class="form-horizontal" method="POST" action="php_action/createOrder.php" id="createOrderForm">
+		<div id="success-messages"></div>
 
-			  <div class="form-group" style="margin:0">
-			    <label for="orderDate" class="col-sm-2 control-label">Order Date</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="orderDate" name="orderDate" autocomplete="off" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->
-			  
-			  <!-- New Fields Added Here -->
-			  <div class="form-group" style="margin:0">
-			    <label for="expectReturnDate" class="col-sm-2 control-label">Expected Return Date</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="expectReturnDate" name="expectReturnDate" autocomplete="off" />
-			    </div>
-			  </div>
-			  
-			  <div class="form-group" style="margin:0">
-			    <label for="siteLocation" class="col-sm-2 control-label">Site Location</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="siteLocation" name="siteLocation" placeholder="Site Location" autocomplete="off" />
-			    </div>
-			  </div>
-			  <!-- End New Fields -->
-			  
-			  <div class="form-group" style="margin:0">
-			    <label for="clientName" class="col-sm-2 control-label">Client Name</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="clientName" name="clientName" placeholder="Client Name" autocomplete="off" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->
-			  <div class="form-group" style="margin:0">
-			    <label for="clientContact" class="col-sm-2 control-label">Client Contact</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="clientContact" name="clientContact" placeholder="Contact Number" autocomplete="off" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->	
+		<div class="filter-bar clearfix">
+			<label for="orderStatusFilter" class="control-label" style="margin-right:8px;">Show</label>
+			<select id="orderStatusFilter" class="form-control">
+				<option value="">All open &amp; completed orders</option>
+				<option value="onhire">On hire now</option>
+				<option value="overdue">Overdue returns</option>
+				<option value="completed">Completed</option>
+				<option value="cancelled">Cancelled</option>
+				<option value="all">Everything (incl. cancelled)</option>
+			</select>
+			<a href="orders.php?o=add" class="btn btn-primary pull-right"><i class="glyphicon glyphicon-plus-sign"></i> New Order</a>
+		</div>
 
-			  <!--/form-group-->
-			  <div class="form-group" style="margin:0">
-			    <label for="driverName" class="col-sm-2 control-label">Driver Name</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="driverName" name="driverName" placeholder="Driver Name" autocomplete="off" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->
-			  <div class="form-group" style="margin:0">
-			    <label for="driverContact" class="col-sm-2 control-label">Driver Contact</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="driverContact" name="driverContact" placeholder="Contact Number" autocomplete="off" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->			  
-
-			  <table class="table" id="productTable">
-			  	<thead>
-			  		<tr>			  			
-			  			<th >Product</th>
-			  			<th ">Daily Rate</th>
-						<th >Rental Days</th>
-			  			<th >Available Quantity</th>
-			  			<th >Quantity</th>			  			
-			  			<th ">Total</th>			  			
-			  			<th ></th>
-			  		</tr>
-			  	</thead>
-			  	<tbody>
-			  		<?php
-			  		$arrayNumber = 0;
-			  		for($x = 1; $x < 4; $x++) { ?>
-			  			<tr id="row<?php echo $x; ?>" class="<?php echo $arrayNumber; ?>">			  				
-			  				<td style="margin-left:20px;">
-			  					<div class="form-group" style="margin:0">
-			  					<select class="form-control" name="productName[]" id="productName<?php echo $x; ?>" onchange="getProductData(<?php echo $x; ?>)" >
-			  						<option value="">~~SELECT~~</option>
-			  						<?php
-			  							$productSql = "SELECT * FROM product WHERE active = 1 AND status = 1 AND quantity != 0";
-			  							$productData = $connect->query($productSql);
-
-			  							while($row = $productData->fetch_array()) {									 		
-			  								echo "<option value='".$row['product_id']."' id='changeProduct".$row['product_id']."'>".$row['product_name']."</option>";
-										 	} // /while 
-			  						?>
-		  						</select>
-			  					</div>
-			  				</td>
-			  				<td style="padding-left:20px;">			  					
-			  					<input type="text" name="dailyRate[]" id="dailyRate<?php echo $x; ?>" autocomplete="off" disabled="true" class="form-control" />			  					
-			  					<input type="hidden" name="dailyRateValue[]" id="dailyRateValue<?php echo $x; ?>" autocomplete="off" class="form-control" />			  					
-			  				</td>
-							<td style="padding-left:20px;">
-								<div class="form-group" style="margin:0">
-									<input type="number" name="rentalDays[]" id="rentalDays<?php echo $x; ?>" 
-										onkeyup="calculateRentalTotal(<?php echo $x ?>)" 
-										onchange="calculateRentalTotal(<?php echo $x ?>)" 
-										autocomplete="off" class="form-control" min="1" value="1" />
-								</div>
-							</td>
-							<td style="padding-left:20px;">
-			  					<div class="form-group" style="margin:0">
-									<p id="available_quantity<?php echo $x; ?>"></p>
-			  					</div>
-			  				</td>
-			  				<td style="padding-left:20px;">
-								<div class="form-group" style="margin:0">
-									<input type="number" name="quantity[]" id="quantity<?php echo $x; ?>" 
-										onkeyup="calculateRentalTotal(<?php echo $x ?>)" 
-										onchange="calculateRentalTotal(<?php echo $x ?>)" 
-										autocomplete="off" class="form-control" min="1" value="1" />
-								</div>
-							</td>
-			  				<td style="padding-left:20px;">			  					
-			  					<input type="text" name="total[]" id="total<?php echo $x; ?>" autocomplete="off" class="form-control" disabled="true" />			  					
-			  					<input type="hidden" name="totalValue[]" id="totalValue<?php echo $x; ?>" autocomplete="off" class="form-control" />			  					
-			  				</td>
-			  				<td>
-			  					<button class="btn btn-default removeProductRowBtn" type="button" id="removeProductRowBtn" onclick="removeProductRow(<?php echo $x; ?>)"><i class="glyphicon glyphicon-trash"></i></button>
-			  				</td>
-			  			</tr>
-		  			<?php
-		  			$arrayNumber++;
-			  		} // /for
-			  		?>
-			  	</tbody>			  	
-			  </table>
-
-			  <div class="col-md-6">
-			  	<div class="form-group" style="margin:0">
-				    <label for="subTotal" class="col-sm-3 control-label">Sub Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="subTotal" name="subTotal" disabled="true" />
-				      <input type="hidden" class="form-control" id="subTotalValue" name="subTotalValue" />
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="vat" class="col-sm-3 control-label">VAT</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="vat" name="vat" readonly="true" value="0.00" />
-				      <input type="hidden" class="form-control" id="vatValue" name="vatValue" value="0.00" />
-				    </div>
-				  </div> <!--/form-group-->			  
-				  <div class="form-group" style="margin:0">
-				    <label for="totalAmount" class="col-sm-3 control-label">Total Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="totalAmount" name="totalAmount" disabled="true"/>
-				      <input type="hidden" class="form-control" id="totalAmountValue" name="totalAmountValue" />
-				    </div>
-				  </div> <!--/form-group-->			  
-				  <div class="form-group" style="margin:0">
-				    <label for="discount" class="col-sm-3 control-label">Discount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="discount" name="discount" onkeyup="discountFunc()" autocomplete="off" value="0" />
-				    </div>
-				  </div> <!--/form-group-->	
-				  <div class="form-group" style="margin:0">
-				    <label for="grandTotal" class="col-sm-3 control-label">Grand Total</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="grandTotal" name="grandTotal" disabled="true" />
-				      <input type="hidden" class="form-control" id="grandTotalValue" name="grandTotalValue" />
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0; display:none;">
-				    <label for="gstn" class="col-sm-3 control-label">GSTN (Optional)</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="gstn" name="gstn" placeholder="GST Number (Optional)" autocomplete="off" />
-				    </div>
-				  </div> <!--/form-group-->
-			  </div> <!--/col-md-6-->
-
-			  <div class="col-md-6">
-			  	<div class="form-group" style="margin:0">
-				    <label for="paid" class="col-sm-3 control-label">Paid Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="paid" name="paid" autocomplete="off" onkeyup="paidAmount()" />
-				    </div>
-				  </div> <!--/form-group-->			  
-				  <div class="form-group" style="margin:0">
-				    <label for="due" class="col-sm-3 control-label">Due Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="due" name="due" disabled="true" />
-				      <input type="hidden" class="form-control" id="dueValue" name="dueValue" />
-				    </div>
-				  </div> <!--/form-group-->		
-				  <div class="form-group" style="margin:0">
-				    <label for="clientContact" class="col-sm-3 control-label">Payment Type</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="paymentType" id="paymentType">
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1">Cheque</option>
-				      	<option value="2">Cash</option>
-				      	<option value="3">Credit Card</option>
-				      </select>
-				    </div>
-				  </div> <!--/form-group-->							  
-				  <div class="form-group" style="margin:0">
-				    <label for="clientContact" class="col-sm-3 control-label">Payment Status</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="paymentStatus" id="paymentStatus">
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1">Full Payment</option>
-				      	<option value="2">Advance Payment</option>
-				      	<option value="3">No Payment</option>
-				      </select>
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="clientContact" class="col-sm-3 control-label">Payment Place</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="paymentPlace" id="paymentPlace">
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1">In Gujarat</option>
-				      	<option value="2">Out Of Gujarat</option>
-				      </select>
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="orderStatus" class="col-sm-3 control-label">Order Status</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="orderStatus" id="orderStatus">
-				      	<option value="0">Pending</option>
-				      	<option value="1">Completed</option>
-				      	<option value="2">Cancelled</option>
-				      </select>
-				    </div>
-				  </div> <!--/form-group-->							  
-			  </div> <!--/col-md-6-->
-
-
-			  <div class="form-group submitButtonFooter">
-			    <div class="col-sm-offset-2 col-sm-10">
-			    <button type="button" class="btn btn-default" onclick="addRow()" id="addRowBtn" data-loading-text="Loading..."> <i class="glyphicon glyphicon-plus-sign"></i> Add Row </button>
-
-			      <button type="submit" id="createOrderBtn" data-loading-text="Loading..." class="btn btn-success"><i class="glyphicon glyphicon-ok-sign"></i> Save Changes</button>
-
-			      <button type="reset" class="btn btn-default" onclick="resetOrderForm()"><i class="glyphicon glyphicon-erase"></i> Reset</button>
-			    </div>
-			  </div>
-			</form>
-		<?php } else if($_GET['o'] == 'manord') { 
-			// manage order
-			?>
-
-			<div id="success-messages"></div>
-			
-			<div class="table-responsive">
-  			<table class="table table-bordered table-striped table-condensed" id="manageOrderTable">
-
+		<div class="table-responsive">
+			<table class="table table-bordered table-striped table-condensed" id="manageOrderTable" style="width:100%;">
 				<thead>
 					<tr>
-						<th>#</th>
-						<th>Order Date</th>
-						<th>Expected Return</th>
-						<th>Returned Date</th>
-						<th>Site Location</th>
-						<th>Client Name</th>
-						<th>Client Contact</th>
-						<th>Driver Name</th>
-						<th>Driver Contact</th>
-						<th>Returned By</th>
-						<th>Returned By Contact</th>
-						<th>Approved By</th>
-						<th>Grand Total</th>
-						<th>Paid</th>
-						<th>Due</th>
-						<th>Payment Type</th>
-						<th>Payment Status</th>
-						<th>Order Status</th>
-						<th>Option</th>
+						<th>Order</th>
+						<th>Date</th>
+						<th>Client</th>
+						<th>Site</th>
+						<th>Expected return</th>
+						<th>Returned</th>
+						<th class="text-right">Total (KSh)</th>
+						<th class="text-right">Paid</th>
+						<th class="text-right">Balance</th>
+						<th>Payment</th>
+						<th>Status</th>
+						<th></th>
 					</tr>
 				</thead>
 			</table>
 		</div>
 
-		
-		<?php 
-		// /else manage order
-		} else if($_GET['o'] == 'editOrd') {
-			// get order
-			?>
-			
-			<div class="success-messages"></div> <!--/success-messages-->
+	<?php } else { ?>
 
-  		<form class="form-horizontal" method="POST" action="php_action/editOrder.php" id="editOrderForm">
+		<div class="order-messages"></div>
 
-  			<?php $orderId = $_GET['i'];
+		<form method="POST" action="php_action/<?php echo $isEdit ? 'editOrder.php' : 'createOrder.php'; ?>" id="orderForm" novalidate>
+			<?php if($isEdit) { ?>
+			<input type="hidden" name="orderId" id="orderId" value="<?php echo (int)$order['order_id']; ?>">
+			<?php } ?>
 
-  			$sql = "SELECT orders.order_id, orders.order_date, orders.expect_return_date, orders.returned_date, orders.site_location, orders.client_name, orders.client_contact, orders.driver_name, orders.driver_contact, orders.returned_by, orders.returned_by_contact, orders.approved_by, orders.sub_total, orders.vat, orders.total_amount, orders.discount, orders.grand_total, orders.paid, orders.due, orders.payment_type, orders.payment_status, orders.payment_place, orders.gstn, orders.order_status FROM orders 	
-					WHERE orders.order_id = {$orderId}";
+			<h4 class="form-section-title">Hire details</h4>
+			<div class="row">
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="orderDate">Order date *</label>
+					<input type="text" class="form-control" id="orderDate" name="orderDate" placeholder="dd/mm/yyyy" autocomplete="off"
+						value="<?php echo h($isEdit ? format_date($order['order_date']) : date('d/m/Y')); ?>">
+				</div>
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="expectReturnDate">Expected return date *</label>
+					<input type="text" class="form-control" id="expectReturnDate" name="expectReturnDate" placeholder="dd/mm/yyyy" autocomplete="off"
+						value="<?php echo h(format_date($val('expect_return_date'))); ?>">
+					<p class="help-block small" id="hirePeriodHint"></p>
+				</div>
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="branch">Branch *</label>
+					<select class="form-control" id="branch" name="branch">
+						<?php echo render_options($MEL_BRANCHES, $val('payment_place', count($MEL_BRANCHES) === 1 ? 1 : ''), '— Select branch —'); ?>
+					</select>
+				</div>
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="siteLocation">Site location *</label>
+					<input type="text" class="form-control" id="siteLocation" name="siteLocation" placeholder="e.g. Kamakis, Ruiru" autocomplete="off" value="<?php echo h($val('site_location')); ?>">
+				</div>
+			</div>
 
-				$result = $connect->query($sql);
-				$data = $result->fetch_row();
-  			?>
+			<h4 class="form-section-title">Client &amp; delivery</h4>
+			<div class="row">
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="clientName">Client name *</label>
+					<input type="text" class="form-control" id="clientName" name="clientName" autocomplete="off" value="<?php echo h($val('client_name')); ?>">
+				</div>
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="clientContact">Client phone *</label>
+					<input type="tel" class="form-control" id="clientContact" name="clientContact" placeholder="0712 345 678" autocomplete="off" value="<?php echo h(format_phone($val('client_contact'))); ?>">
+				</div>
+				<div class="col-sm-6 col-md-2 form-group">
+					<label for="clientKraPin">Client KRA PIN</label>
+					<input type="text" class="form-control" id="clientKraPin" name="clientKraPin" placeholder="Optional" maxlength="11" autocomplete="off" value="<?php echo h($val('gstn')); ?>" style="text-transform:uppercase;">
+				</div>
+				<div class="col-sm-6 col-md-2 form-group">
+					<label for="driverName">Driver name *</label>
+					<input type="text" class="form-control" id="driverName" name="driverName" autocomplete="off" value="<?php echo h($val('driver_name')); ?>">
+				</div>
+				<div class="col-sm-6 col-md-2 form-group">
+					<label for="driverContact">Driver phone *</label>
+					<input type="tel" class="form-control" id="driverContact" name="driverContact" placeholder="0712 345 678" autocomplete="off" value="<?php echo h(format_phone($val('driver_contact'))); ?>">
+				</div>
+			</div>
 
-			  <div class="form-group" style="margin:0">
-			    <label for="orderDate" class="col-sm-2 control-label">Order Date</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="orderDate" name="orderDate" autocomplete="off" value="<?php echo $data[1] ?>" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->
-			  
-			  <!-- New Fields Added Here -->
-			  <div class="form-group" style="margin:0">
-			    <label for="expectReturnDate" class="col-sm-2 control-label">Expected Return Date</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="expectReturnDate" name="expectReturnDate" autocomplete="off" value="<?php echo $data[2] ?>" />
-			    </div>
-			  </div>
-			  
-			  <!-- In the edit order section of orders.php -->
-				<div class="form-group" style="margin:0">
-					<label for="returnedDate" class="col-sm-2 control-label">Returned Date</label>
-					<div class="col-sm-10">
-						<input type="text" class="form-control" id="returnedDate" name="returnedDate" value="<?php echo ($data[3] != '0000-00-00') ? $data[3] : ''; ?>" />
+			<?php if($isEdit) { ?>
+			<h4 class="form-section-title">Return</h4>
+			<div class="row">
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="returnedDate">Returned date</label>
+					<input type="text" class="form-control" id="returnedDate" name="returnedDate" placeholder="Leave blank while on hire" autocomplete="off" value="<?php echo h(format_date($order['returned_date'])); ?>">
+					<p class="help-block small">Setting this returns the equipment to stock and completes the order.</p>
+				</div>
+				<div class="col-sm-6 col-md-3 form-group">
+					<label for="returnedBy">Returned by</label>
+					<input type="text" class="form-control" id="returnedBy" name="returnedBy" autocomplete="off" value="<?php echo h($order['returned_by']); ?>">
+				</div>
+				<div class="col-sm-6 col-md-2 form-group">
+					<label for="returnedByContact">Returned by phone</label>
+					<input type="tel" class="form-control" id="returnedByContact" name="returnedByContact" placeholder="0712 345 678" autocomplete="off" value="<?php echo h(format_phone($order['returned_by_contact'])); ?>">
+				</div>
+				<div class="col-sm-6 col-md-2 form-group">
+					<label for="approvedBy">Approved by</label>
+					<input type="text" class="form-control" id="approvedBy" name="approvedBy" autocomplete="off" value="<?php echo h($order['approved_by']); ?>">
+				</div>
+				<div class="col-sm-6 col-md-2 form-group">
+					<label for="orderStatus">Order status</label>
+					<select class="form-control" id="orderStatus" name="orderStatus">
+						<?php echo render_options($MEL_ORDER_STATUSES, (int)$order['order_status']); ?>
+					</select>
+				</div>
+			</div>
+			<?php } ?>
+
+			<h4 class="form-section-title">Equipment</h4>
+			<div class="table-responsive">
+				<table class="table" id="productTable">
+					<thead>
+						<tr>
+							<th style="min-width:220px;">Product *</th>
+							<th class="text-right">Daily rate (KSh)</th>
+							<th style="width:110px;">Quantity *</th>
+							<th style="width:110px;">Rental days *</th>
+							<th class="text-right">Available</th>
+							<th class="text-right">Line total (KSh)</th>
+							<th style="width:50px;"></th>
+						</tr>
+					</thead>
+					<tbody></tbody>
+				</table>
+			</div>
+			<button type="button" class="btn btn-default btn-sm" id="addRowBtn"><i class="glyphicon glyphicon-plus-sign"></i> Add another product</button>
+
+			<div class="row" style="margin-top:20px;">
+				<div class="col-md-6">
+					<?php if(!$isEdit) { ?>
+					<h4 class="form-section-title">Payment received now</h4>
+					<div class="row">
+						<div class="col-sm-4 form-group">
+							<label for="paid">Amount paid (KSh)</label>
+							<input type="number" min="0" step="0.01" class="form-control" id="paid" name="paid" value="0" autocomplete="off">
+						</div>
+						<div class="col-sm-4 form-group">
+							<label for="paymentType">Payment method</label>
+							<select class="form-control" id="paymentType" name="paymentType">
+								<?php echo render_options($MEL_PAYMENT_TYPES, null, '— Select —'); ?>
+							</select>
+						</div>
+						<div class="col-sm-4 form-group">
+							<label for="paymentReference">Reference</label>
+							<input type="text" class="form-control" id="paymentReference" name="paymentReference" placeholder="M-Pesa code / cheque no." maxlength="100" autocomplete="off" style="text-transform:uppercase;">
+						</div>
+					</div>
+					<p class="help-block small">Leave the amount at 0 if the client has not paid yet. Further payments can be recorded later from Manage Orders.</p>
+					<?php } else { ?>
+					<h4 class="form-section-title">Payments</h4>
+					<p>Paid so far: <strong>KSh <?php echo money($order['paid']); ?></strong> · Status: <strong><?php echo h(payment_status_label($order['payment_status'])); ?></strong></p>
+					<?php if((int)$order['order_status'] !== 2) { ?>
+					<button type="button" class="btn btn-default btn-sm" onclick="paymentOrder(<?php echo (int)$order['order_id']; ?>)"><i class="glyphicon glyphicon-usd"></i> Record payment / view history</button>
+					<?php } ?>
+					<button type="button" class="btn btn-default btn-sm" onclick="printOrder(<?php echo (int)$order['order_id']; ?>)"><i class="glyphicon glyphicon-print"></i> Print invoice</button>
+					<?php } ?>
+				</div>
+
+				<div class="col-md-6 order-summary">
+					<h4 class="form-section-title">Summary</h4>
+					<div class="form-horizontal">
+						<div class="form-group">
+							<label class="col-xs-6 control-label">Sub total</label>
+							<div class="col-xs-6"><input type="text" class="form-control text-right" id="subTotal" readonly></div>
+						</div>
+						<?php if(MEL_VAT_RATE > 0) { ?>
+						<div class="form-group">
+							<label class="col-xs-6 control-label">VAT <?php echo h(MEL_VAT_RATE); ?>%</label>
+							<div class="col-xs-6"><input type="text" class="form-control text-right" id="vat" readonly></div>
+						</div>
+						<?php } ?>
+						<?php if($isEdit) { ?>
+						<div class="form-group">
+							<label class="col-xs-6 control-label">Late return charge</label>
+							<div class="col-xs-6"><input type="text" class="form-control text-right" id="lateFee" readonly></div>
+						</div>
+						<?php } ?>
+						<div class="form-group">
+							<label for="discount" class="col-xs-6 control-label">Discount (KSh)</label>
+							<div class="col-xs-6"><input type="number" min="0" step="0.01" class="form-control text-right" id="discount" name="discount" value="<?php echo h($isEdit ? number_format((float)$order['discount'], 2, '.', '') : '0'); ?>" autocomplete="off"></div>
+						</div>
+						<div class="form-group grand-total">
+							<label class="col-xs-6 control-label">Grand total (KSh)</label>
+							<div class="col-xs-6"><input type="text" class="form-control text-right" id="grandTotal" readonly></div>
+						</div>
+						<div class="form-group">
+							<label class="col-xs-6 control-label">Balance due (KSh)</label>
+							<div class="col-xs-6"><input type="text" class="form-control text-right" id="due" readonly></div>
+						</div>
 					</div>
 				</div>
-			  
-			  <div class="form-group" style="margin:0">
-			    <label for="siteLocation" class="col-sm-2 control-label">Site Location</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="siteLocation" name="siteLocation" placeholder="Site Location" autocomplete="off" value="<?php echo $data[4] ?>" />
-			    </div>
-			  </div>
-			  <!-- End New Fields -->
-			  
-			  <div class="form-group" style="margin:0">
-			    <label for="clientName" class="col-sm-2 control-label">Client Name</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="clientName" name="clientName" placeholder="Client Name" autocomplete="off" value="<?php echo $data[5] ?>" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->
-			  <div class="form-group" style="margin:0">
-			    <label for="clientContact" class="col-sm-2 control-label">Client Contact</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="clientContact" name="clientContact" placeholder="Contact Number" autocomplete="off" value="<?php echo $data[6] ?>" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->		
-			  
-			  <!--/form-group-->
-			  <div class="form-group" style="margin:0">
-			    <label for="driverName" class="col-sm-2 control-label">Driver Name</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="driverName" name="driverName" placeholder="Driver Name" autocomplete="off" value="<?php echo $data[7] ?>" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->
-			  <div class="form-group" style="margin:0">
-			    <label for="driverContact" class="col-sm-2 control-label">Driver Contact</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="driverContact" name="driverContact" placeholder="Contact Number" autocomplete="off" value="<?php echo $data[8] ?>" />
-			    </div>
-			  </div> 
-			  <!--/form-group-->
-			  
-			  <!-- Additional Return Fields -->
-			  <div class="form-group" style="margin:0">
-			    <label for="returnedBy" class="col-sm-2 control-label">Returned By</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="returnedBy" name="returnedBy" placeholder="Returned By" autocomplete="off" value="<?php echo $data[9] ?>" />
-			    </div>
-			  </div>
-			  
-			  <div class="form-group" style="margin:0">
-			    <label for="returnedByContact" class="col-sm-2 control-label">Returned By Contact</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="returnedByContact" name="returnedByContact" placeholder="Contact Number" autocomplete="off" value="<?php echo $data[10] ?>" />
-			    </div>
-			  </div>
-			  
-			  <div class="form-group" style="margin:0">
-			    <label for="approvedBy" class="col-sm-2 control-label">Approved By</label>
-			    <div class="col-sm-10">
-			      <input type="text" class="form-control" id="approvedBy" name="approvedBy" placeholder="Approved By" autocomplete="off" value="<?php echo $data[11] ?>" />
-			    </div>
-			  </div>
-			  <!-- End Additional Return Fields -->
+			</div>
 
-			  <table class="table" id="productTable">
-			  	<thead>
-			  		<tr>			  			
-			  			<th >Product</th>
-						<th >Daily Rate</th>
-						<th >Rental Days</th>
-			  			<th">Available Quantity</th>			  			
-			  			<th">Quantity</th>			  			
-			  			<th >Total</th>			  			
-			  			<th ></th>
-			  		</tr>
-			  	</thead>
-			  	<tbody>
-			  		<?php
-			  		$orderItemSql = "SELECT order_item.order_item_id, order_item.order_id, order_item.product_id, order_item.quantity, order_item.rate, order_item.total FROM order_item WHERE order_item.order_id = {$orderId}";
-						$orderItemResult = $connect->query($orderItemSql);
-			  		$arrayNumber = 0;
-			  		$x = 1;
-			  		while($orderItemData = $orderItemResult->fetch_array()) { 
-			  			// Calculate rental days from existing total
-			  			$dailyRate = $orderItemData['rate'];
-			  			$quantity = $orderItemData['quantity'];
-			  			$total = $orderItemData['total'];
-			  			$rentalDays = ($dailyRate > 0 && $quantity > 0) ? round($total / ($dailyRate * $quantity), 0) : 1;
-			  			?>
-			  			<tr id="row<?php echo $x; ?>" class="<?php echo $arrayNumber; ?>">			  				
-			  				<td style="margin-left:20px;">
-			  					<div class="form-group" style="margin:0">
-			  					<select class="form-control" name="productName[]" id="productName<?php echo $x; ?>" onchange="getProductData(<?php echo $x; ?>)" >
-			  						<option value="">~~SELECT~~</option>
-			  						<?php
-			  							$productSql = "SELECT * FROM product WHERE active = 1 AND status = 1";
-			  							$productData = $connect->query($productSql);
+			<hr>
+			<div class="text-right">
+				<a href="orders.php?o=manord" class="btn btn-link">Back to orders</a>
+				<button type="submit" id="saveOrderBtn" data-loading-text="Saving…" class="btn btn-primary"><i class="glyphicon glyphicon-ok-sign"></i> <?php echo $isEdit ? 'Save changes' : 'Create order'; ?></button>
+			</div>
+		</form>
 
-			  							while($row = $productData->fetch_array()) {									 		
-			  								$selected = "";
-			  								if($row['product_id'] == $orderItemData['product_id']) {
-			  									$selected = "selected";
-			  								} else {
-			  									$selected = "";
-			  								}
+		<script>
+			window.ORDER_FORM = <?php echo json_encode(array(
+				'isEdit'       => $isEdit,
+				'products'     => $products,
+				'items'        => $orderItems,
+				'vatRate'      => (float)MEL_VAT_RATE,
+				'alreadyPaid'  => $isEdit ? (float)$order['paid'] : 0,
+				'orderStatus'  => $isEdit ? (int)$order['order_status'] : 0,
+			), $jsonFlags); ?>;
+		</script>
 
-			  								echo "<option value='".$row['product_id']."' id='changeProduct".$row['product_id']."' ".$selected." >".$row['product_name']."</option>";
-										 	} // /while 
-			  						?>
-		  						</select>
-			  					</div>
-			  				</td>
-			  				<td style="padding-left:20px;">			  					
-								<input type="text" name="dailyRate[]" id="dailyRate<?php echo $x; ?>" autocomplete="off" disabled="true" class="form-control" value="<?php echo $dailyRate; ?>" />			  					
-								<input type="hidden" name="dailyRateValue[]" id="dailyRateValue<?php echo $x; ?>" autocomplete="off" class="form-control" value="<?php echo $dailyRate; ?>" />			  					
-							</td>
-							<td style="padding-left:20px;">
-								<div class="form-group" style="margin:0">
-									<input type="number" name="rentalDays[]" id="rentalDays<?php echo $x; ?>" 
-										onkeyup="calculateRentalTotal(<?php echo $x ?>)" 
-										onchange="calculateRentalTotal(<?php echo $x ?>)" 
-										autocomplete="off" class="form-control" min="1" value="1" />
-								</div>
-							</td>
-							<td style="padding-left:20px;">
-			  					<div class="form-group" style="margin:0">
-									<?php
-			  							$productSql = "SELECT * FROM product WHERE product_id = ".$orderItemData['product_id'];
-			  							$productData = $connect->query($productSql);
+	<?php } ?>
 
-			  							while($row = $productData->fetch_array()) {									 		
-			  								echo "<p id='available_quantity".$row['product_id']."'>".$row['quantity']."</p>";
-										 	} // /while 
-			  						?>
-			  					</div>
-			  				</td>
-			  				<td style="padding-left:20px;">
-								<div class="form-group" style="margin:0">
-									<input type="number" name="quantity[]" id="quantity<?php echo $x; ?>" 
-										onkeyup="calculateRentalTotal(<?php echo $x ?>)" 
-										onchange="calculateRentalTotal(<?php echo $x ?>)" 
-										autocomplete="off" class="form-control" min="1" value="1" />
-								</div>
-							</td>
-			  				<td style="padding-left:20px;">			  					
-			  					<input type="text" name="total[]" id="total<?php echo $x; ?>" autocomplete="off" class="form-control" disabled="true" value="<?php echo $total; ?>"/>			  					
-			  					<input type="hidden" name="totalValue[]" id="totalValue<?php echo $x; ?>" autocomplete="off" class="form-control" value="<?php echo $total; ?>"/>			  					
-			  				</td>
-			  				<td>
-			  					<button class="btn btn-default removeProductRowBtn" type="button" id="removeProductRowBtn" onclick="removeProductRow(<?php echo $x; ?>)"><i class="glyphicon glyphicon-trash"></i></button>
-			  				</td>
-			  			</tr>
-		  			<?php
-		  			$arrayNumber++;
-		  			$x++;
-			  		} // /while
-			  		?>
-			  	</tbody>			  	
-			  </table>
-
-			  <div class="col-md-6">
-			  	<div class="form-group" style="margin:0">
-				    <label for="subTotal" class="col-sm-3 control-label">Sub Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="subTotal" name="subTotal" disabled="true" value="<?php echo $data[12] ?>" />
-				      <input type="hidden" class="form-control" id="subTotalValue" name="subTotalValue" value="<?php echo $data[12] ?>" />
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="vat" class="col-sm-3 control-label">VAT</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="vat" name="vat" disabled="true" value="0.00"  />
-				      <input type="hidden" class="form-control" id="vatValue" name="vatValue" value="0.00"  />
-				    </div>
-				  </div> <!--/form-group-->			  
-				  <div class="form-group" style="margin:0">
-				    <label for="totalAmount" class="col-sm-3 control-label">Total Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="totalAmount" name="totalAmount" disabled="true" value="<?php echo $data[14] ?>" />
-				      <input type="hidden" class="form-control" id="totalAmountValue" name="totalAmountValue" value="<?php echo $data[14] ?>"  />
-				    </div>
-				  </div> <!--/form-group-->			  
-				  <div class="form-group" style="margin:0">
-				    <label for="discount" class="col-sm-3 control-label">Discount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="discount" name="discount" onkeyup="discountFunc()" autocomplete="off" value="<?php echo $data[15] ?>" />
-				    </div>
-				  </div> <!--/form-group-->	
-				  <div class="form-group" style="margin:0">
-				    <label for="grandTotal" class="col-sm-3 control-label">Grand Total</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="grandTotal" name="grandTotal" disabled="true" value="<?php echo $data[16] ?>"  />
-				      <input type="hidden" class="form-control" id="grandTotalValue" name="grandTotalValue" value="<?php echo $data[16] ?>"  />
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0; display:none;">
-				    <label for="gstn" class="col-sm-3 control-label">GSTN (Optional)</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="gstn" name="gstn" value="<?php echo $data[22] ?>"  />
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="orderStatus" class="col-sm-3 control-label">Order Status</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="orderStatus" id="orderStatus">
-				      	<option value="0" <?php if($data[23] == 0) { echo "selected"; } ?>>Pending</option>
-				      	<option value="1" <?php if($data[23] == 1) { echo "selected"; } ?>>Completed</option>
-				      	<option value="2" <?php if($data[23] == 2) { echo "selected"; } ?>>Cancelled</option>
-				      </select>
-				    </div>
-				  </div> <!--/form-group-->		  		  
-			  </div> <!--/col-md-6-->
-
-			  <div class="col-md-6">
-			  	<div class="form-group" style="margin:0">
-				    <label for="paid" class="col-sm-3 control-label">Paid Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="paid" name="paid" autocomplete="off" onkeyup="paidAmount()" value="<?php echo $data[17] ?>"  />
-				    </div>
-				  </div> <!--/form-group-->			  
-				  <div class="form-group" style="margin:0">
-				    <label for="due" class="col-sm-3 control-label">Due Amount</label>
-				    <div class="col-sm-9">
-				      <input type="text" class="form-control" id="due" name="due" disabled="true" value="<?php echo $data[18] ?>"  />
-				      <input type="hidden" class="form-control" id="dueValue" name="dueValue" value="<?php echo $data[18] ?>"  />
-				    </div>
-				  </div> <!--/form-group-->		
-				  <div class="form-group" style="margin:0">
-				    <label for="clientContact" class="col-sm-3 control-label">Payment Type</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="paymentType" id="paymentType" >
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1" <?php if($data[19] == 1) { echo "selected"; } ?> >Cheque</option>
-				      	<option value="2" <?php if($data[19] == 2) { echo "selected"; } ?>  >Cash</option>
-				      	<option value="3" <?php if($data[19] == 3) { echo "selected"; } ?> >Credit Card</option>
-				      </select>
-				    </div>
-				  </div> <!--/form-group-->							  
-				  <div class="form-group" style="margin:0">
-				    <label for="clientContact" class="col-sm-3 control-label">Payment Status</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="paymentStatus" id="paymentStatus">
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1" <?php if($data[20] == 1) { echo "selected"; } ?>  >Full Payment</option>
-				      	<option value="2" <?php if($data[20] == 2) { echo "selected"; } ?> >Advance Payment</option>
-				      	<option value="3" <?php if($data[20] == 3) { echo "selected"; } ?> >No Payment</option>
-				      </select>
-				    </div>
-				  </div> <!--/form-group-->
-				  <div class="form-group" style="margin:0">
-				    <label for="clientContact" class="col-sm-3 control-label">Payment Place</label>
-				    <div class="col-sm-9">
-				      <select class="form-control" name="paymentPlace" id="paymentPlace">
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1" <?php if($data[21] == 1) { echo "selected"; } ?>  >In Gujarat</option>
-				      	<option value="2" <?php if($data[21] == 2) { echo "selected"; } ?> >Out Of Gujarat</option>
-				      </select>
-				    </div>
-				  </div>							  
-			  </div> <!--/col-md-6-->
+	</div> <!--/panel-body-->
+</div> <!--/panel-->
 
 
-			  <div class="form-group editButtonFooter">
-			    <div class="col-sm-offset-2 col-sm-10">
-			    <button type="button" class="btn btn-default" onclick="addRow()" id="addRowBtn" data-loading-text="Loading..."> <i class="glyphicon glyphicon-plus-sign"></i> Add Row </button>
-
-			    <input type="hidden" name="orderId" id="orderId" value="<?php echo $_GET['i']; ?>" />
-
-			    <button type="submit" id="editOrderBtn" data-loading-text="Loading..." class="btn btn-success"><i class="glyphicon glyphicon-ok-sign"></i> Save Changes</button>
-			      
-			    </div>
-			  </div>
-			</form>
-
-			<?php
-		} // /get order else  ?>
-
-
-	</div> <!--/panel-->	
-</div> <!--/panel-->	
-
-
-<!-- edit order -->
+<!-- record payment -->
 <div class="modal fade" tabindex="-1" role="dialog" id="paymentOrderModal">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-        <h4 class="modal-title"><i class="glyphicon glyphicon-edit"></i> Edit Payment</h4>
-      </div>      
-
-      <div class="modal-body form-horizontal" style="max-height:500px; overflow:auto;" >
-
+        <h4 class="modal-title"><i class="glyphicon glyphicon-usd"></i> Payments — <span id="paymentOrderTitle"></span></h4>
+      </div>
+      <div class="modal-body">
       	<div class="paymentOrderMessages"></div>
 
-      	     				 				 
-			  <div class="form-group" style="margin:0">
-			    <label for="due" class="col-sm-3 control-label">Due Amount</label>
-			    <div class="col-sm-9">
-			      <input type="text" class="form-control" id="due" name="due" disabled="true" />					
-			    </div>
-			  </div> <!--/form-group-->		
-			  <div class="form-group" style="margin:0">
-			    <label for="payAmount" class="col-sm-3 control-label">Pay Amount</label>
-			    <div class="col-sm-9">
-			      <input type="text" class="form-control" id="payAmount" name="payAmount"/>					      
-			    </div>
-			  </div> <!--/form-group-->		
-			  <div class="form-group" style="margin:0">
-			    <label for="clientContact" class="col-sm-3 control-label">Payment Type</label>
-			    <div class="col-sm-9">
-			      <select class="form-control" name="paymentType" id="paymentType" >
-			      	<option value="">~~SELECT~~</option>
-			      	<option value="1">Cheque</option>
-			      	<option value="2">Cash</option>
-			      	<option value="3">Credit Card</option>
-			      </select>
-			    </div>
-			  </div> <!--/form-group-->							  
-			  <div class="form-group" style="margin:0">
-			    <label for="clientContact" class="col-sm-3 control-label">Payment Status</label>
-			    <div class="col-sm-9">
-			      <select class="form-control" name="paymentStatus" id="paymentStatus">
-			      	<option value="">~~SELECT~~</option>
-			      	<option value="1">Full Payment</option>
-			      	<option value="2">Advance Payment</option>
-			      	<option value="3">No Payment</option>
-			      </select>
-			    </div>
-			  </div> <!--/form-group-->							  				  
-      	        
-      </div> <!--/modal-body-->
+      	<div class="row text-center" style="margin-bottom:12px;">
+      		<div class="col-xs-4"><small class="text-muted">Grand total</small><div><strong id="payGrandTotal"></strong></div></div>
+      		<div class="col-xs-4"><small class="text-muted">Paid</small><div><strong id="payPaid"></strong></div></div>
+      		<div class="col-xs-4"><small class="text-muted">Balance</small><div><strong id="payDue"></strong></div></div>
+      	</div>
+
+      	<div id="paymentHistory"></div>
+
+      	<form id="paymentForm" novalidate>
+      		<h4 class="form-section-title">Record a payment</h4>
+      		<div class="row">
+      			<div class="col-sm-4 form-group">
+      				<label for="payAmount">Amount (KSh) *</label>
+      				<input type="number" min="0.01" step="0.01" class="form-control" id="payAmount" name="payAmount" autocomplete="off">
+      			</div>
+      			<div class="col-sm-4 form-group">
+      				<label for="payPaymentType">Method *</label>
+      				<select class="form-control" id="payPaymentType" name="paymentType">
+      					<?php echo render_options($MEL_PAYMENT_TYPES, null, '— Select —'); ?>
+      				</select>
+      			</div>
+      			<div class="col-sm-4 form-group">
+      				<label for="payReference">Reference</label>
+      				<input type="text" class="form-control" id="payReference" name="paymentReference" placeholder="M-Pesa code" maxlength="100" autocomplete="off" style="text-transform:uppercase;">
+      			</div>
+      		</div>
+      	</form>
+      	<p id="paymentFullyPaid" class="text-success" style="display:none;"><i class="glyphicon glyphicon-ok-sign"></i> This order is fully paid.</p>
+      </div>
       <div class="modal-footer">
-      	<button type="button" class="btn btn-default" data-dismiss="modal"> <i class="glyphicon glyphicon-remove-sign"></i> Close</button>
-        <button type="button" class="btn btn-primary" id="updatePaymentOrderBtn" data-loading-text="Loading..."> <i class="glyphicon glyphicon-ok-sign"></i> Save changes</button>	
-      </div>           
+      	<button type="button" class="btn btn-link" data-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="updatePaymentOrderBtn" data-loading-text="Saving…"><i class="glyphicon glyphicon-ok-sign"></i> Record payment</button>
+      </div>
     </div><!-- /.modal-content -->
   </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
-<!-- /edit order-->
 
-<!-- remove order -->
+<!-- cancel order -->
 <div class="modal fade" tabindex="-1" role="dialog" id="removeOrderModal">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-        <h4 class="modal-title"><i class="glyphicon glyphicon-trash"></i> Remove Order</h4>
+        <h4 class="modal-title"><i class="glyphicon glyphicon-ban-circle"></i> Cancel order <span id="removeOrderTitle"></span></h4>
       </div>
       <div class="modal-body">
-
       	<div class="removeOrderMessages"></div>
-
-        <p>Do you really want to remove ?</p>
+        <p>Cancel this order? Any equipment still on hire will be put back into stock. Recorded payments stay in the payment history.</p>
+        <p class="text-muted">This cannot be undone.</p>
       </div>
-      <div class="modal-footer removeProductFooter">
-        <button type="button" class="btn btn-default" data-dismiss="modal"> <i class="glyphicon glyphicon-remove-sign"></i> Close</button>
-        <button type="button" class="btn btn-primary" id="removeOrderBtn" data-loading-text="Loading..."> <i class="glyphicon glyphicon-ok-sign"></i> Save changes</button>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link" data-dismiss="modal">Keep order</button>
+        <button type="button" class="btn btn-danger" id="removeOrderBtn" data-loading-text="Cancelling…"><i class="glyphicon glyphicon-ban-circle"></i> Cancel order</button>
       </div>
     </div><!-- /.modal-content -->
   </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
-<!-- /remove order-->
 
 
 <script src="custom/js/order.js"></script>

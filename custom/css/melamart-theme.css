@@ -174,7 +174,8 @@ ol.breadcrumb > li + li::before { color: var(--mel-steel-light); }
   box-shadow: var(--mel-shadow-sm) !important;
   background: var(--mel-surface);
   margin-bottom: 24px;
-  overflow: hidden;
+  /* No overflow:hidden here — it clipped the Action dropdown menus in tables.
+     The heading carries the rounded top corners instead. */
 }
 /* All panel variants → navy heading */
 .panel-default > .panel-heading,
@@ -186,7 +187,7 @@ ol.breadcrumb > li + li::before { color: var(--mel-steel-light); }
   background: var(--mel-navy) !important;
   color: #fff !important;
   border-bottom: none !important;
-  border-radius: 0 !important;
+  border-radius: calc(var(--mel-radius-lg) - 1px) calc(var(--mel-radius-lg) - 1px) 0 0 !important;
   padding: 14px 20px !important;
   font-family: 'Montserrat', sans-serif;
   font-weight: 600 !important;

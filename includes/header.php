@@ -1,5 +1,13 @@
-<?php require_once 'php_action/core.php'; ?>
-
+<?php require_once __DIR__ . '/../php_action/core.php'; ?>
+<?php
+$navUserStmt = $connect->prepare("SELECT username FROM users WHERE user_id = ?");
+$navUserId = current_user_id();
+$navUserStmt->bind_param('i', $navUserId);
+$navUserStmt->execute();
+$navUser = $navUserStmt->get_result()->fetch_assoc();
+$navUserStmt->close();
+$navUsername = $navUser ? $navUser['username'] : '';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +16,9 @@
 
   <title>Melamart Admin — Enterprises Limited</title>
   <link rel="shortcut icon" href="images/logo.jpeg">
+
+  <!-- CSRF token — attached to every AJAX POST by custom/js/app.js -->
+  <meta name="csrf-token" content="<?php echo h(csrf_token()); ?>">
 
   <!-- Melamart brand fonts — Montserrat (headings) + Open Sans (body) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,35 +45,20 @@
   <script src="assets/jquery/jquery.min.js"></script>
   <script src="assets/jquery-ui/jquery-ui.min.js"></script>
   <script src="assets/bootstrap/js/bootstrap.min.js"></script>
+  <!-- File input plugin -->
+  <script src="assets/plugins/fileinput/js/plugins/canvas-to-blob.min.js"></script>
+  <script src="assets/plugins/fileinput/js/plugins/sortable.min.js"></script>
+  <script src="assets/plugins/fileinput/js/plugins/purify.min.js"></script>
+  <script src="assets/plugins/fileinput/js/fileinput.min.js"></script>
+  <!-- DataTables -->
+  <script src="assets/plugins/datatables/jquery.dataTables.min.js"></script>
+  <!-- Shared helpers: CSRF, toasts, error handling, date picker defaults -->
+  <script src="custom/js/app.js"></script>
 
-  <!-- Overdue badge counter — admin user only -->
-  <?php if(isset($_SESSION['userId']) && $_SESSION['userId'] === 1) { ?>
+  <?php if(is_admin()) { ?>
+  <!-- Overdue badge counter — admin only -->
   <script src="custom/js/overdueBadge.js"></script>
   <?php } ?>
-
-  <!-- CSRF token — available to all AJAX calls via $.ajaxSetup below -->
-  <meta name="csrf-token" content="<?php echo htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
-
-  <script>
-    // Automatically attach CSRF token to every jQuery AJAX POST request.
-    // This means individual JS files don't need to be modified.
-    $(document).ready(function() {
-      var csrfToken = $('meta[name="csrf-token"]').attr('content');
-      $.ajaxSetup({
-        beforeSend: function(xhr, settings) {
-          if(settings.type === 'POST' || settings.type === 'post') {
-            if(typeof settings.data === 'string') {
-              settings.data += (settings.data ? '&' : '') + 'csrf_token=' + encodeURIComponent(csrfToken);
-            } else if(settings.data instanceof FormData) {
-              settings.data.append('csrf_token', csrfToken);
-            } else if(typeof settings.data === 'object' && settings.data !== null) {
-              settings.data.csrf_token = csrfToken;
-            }
-          }
-        }
-      });
-    });
-  </script>
 </head>
 <body>
 
@@ -71,7 +67,7 @@
 		<div class="container">
     <!-- Brand and toggle get grouped for better mobile display -->
     <div class="navbar-header" >
-      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-navbar-collapse" aria-expanded="false">
         <span class="sr-only">Toggle navigation</span>
         <span class="icon-bar"></span>
         <span class="icon-bar"></span>
@@ -83,46 +79,40 @@
     </div>
 
     <!-- Collect the nav links, forms, and other content for toggling -->
-    <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">      
+    <div class="collapse navbar-collapse" id="main-navbar-collapse">
 
-      <ul class="nav navbar-nav navbar-right">        
+      <ul class="nav navbar-nav navbar-right">
 
-      	<li id="navDashboard"><a href="index.php"><i class="glyphicon glyphicon-list-alt"></i>  Dashboard</a></li>        
-        <?php if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
-        <li id="navBrand"><a href="brand.php"><i class="glyphicon glyphicon-btc"></i>  Brand</a></li>        
+      	<li id="navDashboard"><a href="dashboard.php"><i class="glyphicon glyphicon-home"></i>  Dashboard</a></li>
+        <?php if(is_admin()) { ?>
+        <li id="navBrand"><a href="brand.php"><i class="glyphicon glyphicon-bookmark"></i>  Brands</a></li>
+        <li id="navCategories"><a href="categories.php"> <i class="glyphicon glyphicon-th-list"></i> Categories</a></li>
+        <li id="navProduct"><a href="product.php"> <i class="glyphicon glyphicon-wrench"></i> Equipment </a></li>
 		<?php } ?>
-		<?php if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
-        <li id="navCategories"><a href="categories.php"> <i class="glyphicon glyphicon-th-list"></i> Category</a></li>        
-		<?php } ?>
-		<?php if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
-        <li id="navProduct"><a href="product.php"> <i class="glyphicon glyphicon-ruble"></i> Product </a></li> 
-		<?php } ?>
-		
+
         <li class="dropdown" id="navOrder">
           <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false"> <i class="glyphicon glyphicon-shopping-cart"></i> Orders <span class="caret"></span></a>
-          <ul class="dropdown-menu">            
-            <li id="topNavAddOrder"><a href="orders.php?o=add"> <i class="glyphicon glyphicon-plus"></i> Add Orders</a></li>            
-            <li id="topNavManageOrder"><a href="orders.php?o=manord"> <i class="glyphicon glyphicon-edit"></i> Manage Orders</a></li>            
+          <ul class="dropdown-menu">
+            <li id="topNavAddOrder"><a href="orders.php?o=add"> <i class="glyphicon glyphicon-plus"></i> New Order</a></li>
+            <li id="topNavManageOrder"><a href="orders.php?o=manord"> <i class="glyphicon glyphicon-list"></i> Manage Orders</a></li>
           </ul>
         </li>
-        <?php if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
-        <li id="navOverdue"><a href="overdue_reminders.php"> <i class="glyphicon glyphicon-exclamation-sign"></i> Overdue <span id="overdue-badge" class="badge"></span></a></li>
-        <?php } ?> 
-		
-		<?php  if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
-        <li id="navReport"><a href="report.php"> <i class="glyphicon glyphicon-check"></i> Report </a></li>
-		<?php } ?>
+        <?php if(is_admin()) { ?>
+        <li id="navOverdue"><a href="overdue_reminders.php"> <i class="glyphicon glyphicon-exclamation-sign"></i> Overdue <span id="overdue-badge" class="badge" style="display:none;"></span></a></li>
+        <li id="navReport"><a href="report.php"> <i class="glyphicon glyphicon-stats"></i> Reports </a></li>
+        <?php } ?>
         <li class="dropdown" id="navSetting">
-          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false"> <i class="glyphicon glyphicon-user"></i> <span class="caret"></span></a>
-          <ul class="dropdown-menu">    
-			<?php if(isset($_SESSION['userId']) && $_SESSION['userId']==1) { ?>
-            <li id="topNavSetting"><a href="setting.php"> <i class="glyphicon glyphicon-wrench"></i> Setting</a></li>
-            <li id="topNavUser"><a href="user.php"> <i class="glyphicon glyphicon-wrench"></i> Add User</a></li>
-<?php } ?>              
-            <li id="topNavLogout"><a href="logout.php"> <i class="glyphicon glyphicon-log-out"></i> Logout</a></li>            
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false"> <i class="glyphicon glyphicon-user"></i> <?php echo h($navUsername); ?> <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li id="topNavSetting"><a href="setting.php"> <i class="glyphicon glyphicon-cog"></i> My Account</a></li>
+            <?php if(is_admin()) { ?>
+            <li id="topNavUser"><a href="user.php"> <i class="glyphicon glyphicon-user"></i> Manage Users</a></li>
+            <?php } ?>
+            <li role="separator" class="divider"></li>
+            <li id="topNavLogout"><a href="logout.php"> <i class="glyphicon glyphicon-log-out"></i> Logout</a></li>
           </ul>
-        </li>        
-           
+        </li>
+
       </ul>
     </div><!-- /.navbar-collapse -->
   </div><!-- /.container-fluid -->
@@ -130,4 +120,3 @@
 
 	<div class="container">
 
-    

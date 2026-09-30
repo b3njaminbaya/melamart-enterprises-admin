@@ -1,120 +1,100 @@
 <?php require_once 'includes/header.php'; ?>
 
 <?php
+$today = date('Y-m-d');
+$monthStart = date('Y-m-01');
 
-$sql = "SELECT * FROM product WHERE status = 1";
-$query = $connect->query($sql);
-$countProduct = $query->num_rows;
+// Orders currently on hire / overdue
+$row = $connect->query(
+	"SELECT
+		SUM(order_status = 0 AND returned_date IS NULL) AS on_hire,
+		SUM(order_status = 0 AND returned_date IS NULL AND expect_return_date < '$today') AS overdue
+	 FROM orders"
+)->fetch_assoc();
+$countOnHire = (int)$row['on_hire'];
+$countOverdue = (int)$row['overdue'];
 
-$orderSql = "SELECT * FROM orders WHERE order_status = 1";
-$orderQuery = $connect->query($orderSql);
-$countOrder = $orderQuery->num_rows;
+// This month (by order date, excluding cancelled)
+$stmt = $connect->prepare("SELECT COUNT(*) AS orders_count, COALESCE(SUM(grand_total), 0) AS billed FROM orders WHERE order_status != 2 AND order_date >= ?");
+$stmt->bind_param('s', $monthStart);
+$stmt->execute();
+$month = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-$totalRevenue = 0;
-while ($orderResult = $orderQuery->fetch_assoc()) {
-    $totalRevenue += $orderResult['paid'];
+// Money: collected overall and still owed (excluding cancelled orders)
+$money = $connect->query("SELECT COALESCE(SUM(paid), 0) AS collected, COALESCE(SUM(GREATEST(due, 0)), 0) AS outstanding FROM orders WHERE order_status != 2")->fetch_assoc();
+
+if(is_admin()) {
+	$countProduct = (int)$connect->query("SELECT COUNT(*) FROM product WHERE status = 1")->fetch_row()[0];
+	$lowStock = $connect->query("SELECT product_id, product_name, quantity FROM product WHERE status = 1 AND active = 1 AND quantity <= 3 ORDER BY quantity, product_name LIMIT 10");
+
+	$userwiseQuery = $connect->query(
+		"SELECT users.username, COUNT(*) AS order_count, SUM(orders.grand_total) AS totalorder
+		 FROM orders
+		 INNER JOIN users ON orders.user_id = users.user_id
+		 WHERE orders.order_status != 2
+		 GROUP BY orders.user_id, users.username
+		 ORDER BY totalorder DESC"
+	);
 }
-
-$lowStockSql = "SELECT * FROM product WHERE quantity <= 3 AND status = 1";
-$lowStockQuery = $connect->query($lowStockSql);
-$countLowStock = $lowStockQuery->num_rows;
-
-$userwisesql = "SELECT users.username, SUM(orders.grand_total) as totalorder
-                FROM orders
-                INNER JOIN users ON orders.user_id = users.user_id
-                WHERE orders.order_status = 1
-                GROUP BY orders.user_id
-                ORDER BY totalorder DESC";
-$userwiseQuery  = $connect->query($userwisesql);
-$userwieseOrder = $userwiseQuery->num_rows;
-// Connection stays open — $userwiseQuery is iterated below in the template.
-
 ?>
 
-<!-- fullCalendar CSS -->
-<link rel="stylesheet" href="assets/plugins/fullcalendar/fullcalendar.min.css">
-<link rel="stylesheet" href="assets/plugins/fullcalendar/fullcalendar.print.css" media="print">
+<div class="row">
+  <div class="col-xs-12">
+    <h4 style="margin:0 0 16px;"><?php echo h(date('l, j F Y')); ?></h4>
+  </div>
+</div>
 
-<!-- ═══════════════════════════════════
-     Stat panels row
-═══════════════════════════════════ -->
+<div class="row">
+  <div class="col-xs-6 col-md-3">
+    <a class="stat-card" href="orders.php?o=manord">
+      <div class="stat-label"><i class="glyphicon glyphicon-road"></i> On hire now</div>
+      <div class="stat-value"><?php echo $countOnHire; ?></div>
+    </a>
+  </div>
+  <div class="col-xs-6 col-md-3">
+    <a class="stat-card <?php echo $countOverdue > 0 ? 'stat-danger' : ''; ?>" href="<?php echo is_admin() ? 'overdue_reminders.php' : 'orders.php?o=manord'; ?>">
+      <div class="stat-label"><i class="glyphicon glyphicon-exclamation-sign"></i> Overdue returns</div>
+      <div class="stat-value"><?php echo $countOverdue; ?></div>
+    </a>
+  </div>
+  <div class="col-xs-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-label"><i class="glyphicon glyphicon-calendar"></i> Orders this month</div>
+      <div class="stat-value"><?php echo (int)$month['orders_count']; ?></div>
+    </div>
+  </div>
+  <div class="col-xs-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-label"><i class="glyphicon glyphicon-file"></i> Billed this month</div>
+      <div class="stat-value">KSh <?php echo money($month['billed']); ?></div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-xs-12 col-sm-6">
+    <div class="stat-card">
+      <div class="stat-label"><i class="glyphicon glyphicon-ok-sign"></i> Total payments received</div>
+      <div class="stat-value">KSh <?php echo money($money['collected']); ?></div>
+    </div>
+  </div>
+  <div class="col-xs-12 col-sm-6">
+    <?php $tag = is_admin() ? 'a href="report.php"' : 'div'; ?>
+    <<?php echo $tag; ?> class="stat-card stat-warning">
+      <div class="stat-label"><i class="glyphicon glyphicon-time"></i> Outstanding balances</div>
+      <div class="stat-value">KSh <?php echo money($money['outstanding']); ?></div>
+    </<?php echo is_admin() ? 'a' : 'div'; ?>>
+  </div>
+</div>
+
+<?php if(is_admin()) { ?>
 <div class="row">
 
-  <?php if(isset($_SESSION['userId']) && $_SESSION['userId'] == 1): ?>
-
-  <div class="col-xs-12 col-sm-6 col-md-4">
+  <div class="col-xs-12 col-md-7">
     <div class="panel panel-default">
       <div class="panel-heading">
-        <a href="product.php">
-          <i class="glyphicon glyphicon-tag"></i> Total Products
-          <span class="badge"><?php echo (int)$countProduct; ?></span>
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xs-12 col-sm-6 col-md-4">
-    <div class="panel panel-default">
-      <div class="panel-heading">
-        <a href="product.php">
-          <i class="glyphicon glyphicon-warning-sign"></i> Low Stock
-          <span class="badge"><?php echo (int)$countLowStock; ?></span>
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <?php endif; ?>
-
-  <div class="col-xs-12 col-sm-6 col-md-4">
-    <div class="panel panel-default">
-      <div class="panel-heading">
-        <a href="orders.php?o=manord">
-          <i class="glyphicon glyphicon-shopping-cart"></i> Total Orders
-          <span class="badge"><?php echo (int)$countOrder; ?></span>
-        </a>
-      </div>
-    </div>
-  </div>
-
-</div><!-- /stat panels row -->
-
-<!-- ═══════════════════════════════════
-     Cards + Orders-by-user table
-═══════════════════════════════════ -->
-<div class="row">
-
-  <!-- Date & Revenue cards -->
-  <div class="col-xs-12 col-sm-6 col-md-4">
-
-    <div class="card">
-      <div class="cardHeader">
-        <h1><?php echo date('d'); ?></h1>
-      </div>
-      <div class="cardContainer">
-        <p><?php echo date('l, d F Y'); ?></p>
-      </div>
-    </div>
-
-    <div style="height:16px;"></div>
-
-    <div class="card">
-      <div class="cardHeader">
-        <h1>Ksh <?php echo number_format($totalRevenue ?: 0, 2); ?></h1>
-      </div>
-      <div class="cardContainer">
-        <p>Total Revenue (Active Orders)</p>
-      </div>
-    </div>
-
-  </div><!-- /cards col -->
-
-  <!-- Orders by user (admin only) -->
-  <?php if(isset($_SESSION['userId']) && $_SESSION['userId'] == 1): ?>
-  <div class="col-xs-12 col-sm-6 col-md-8">
-    <div class="panel panel-default">
-      <div class="panel-heading">
-        <i class="glyphicon glyphicon-user"></i> Orders by User
+        <i class="glyphicon glyphicon-user"></i> Orders by staff member
       </div>
       <div class="panel-body" style="padding:0 !important;">
         <div class="table-responsive">
@@ -122,22 +102,22 @@ $userwieseOrder = $userwiseQuery->num_rows;
             <thead>
               <tr>
                 <th>Username</th>
-                <th>Total (Ksh)</th>
+                <th class="text-right">Orders</th>
+                <th class="text-right">Total billed (KSh)</th>
               </tr>
             </thead>
             <tbody>
-              <?php if($userwieseOrder > 0): ?>
+              <?php if($userwiseQuery->num_rows > 0): ?>
                 <?php while($row = $userwiseQuery->fetch_assoc()): ?>
                 <tr>
-                  <td><?php echo htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8'); ?></td>
-                  <td><?php echo number_format($row['totalorder'], 2); ?></td>
+                  <td><?php echo h($row['username']); ?></td>
+                  <td class="text-right"><?php echo (int)$row['order_count']; ?></td>
+                  <td class="text-right"><?php echo money($row['totalorder']); ?></td>
                 </tr>
                 <?php endwhile; ?>
               <?php else: ?>
                 <tr>
-                  <td colspan="2" class="text-center" style="color:#697587;padding:20px;">
-                    No active orders found.
-                  </td>
+                  <td colspan="3" class="text-center" style="color:#697587;padding:20px;">No orders yet.</td>
                 </tr>
               <?php endif; ?>
             </tbody>
@@ -146,13 +126,34 @@ $userwieseOrder = $userwiseQuery->num_rows;
       </div>
     </div>
   </div>
-  <?php endif; ?>
 
-</div><!-- /cards row -->
+  <div class="col-xs-12 col-md-5">
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <i class="glyphicon glyphicon-warning-sign"></i> Low stock (3 or fewer in store) · <?php echo $countProduct; ?> products in total
+      </div>
+      <div class="panel-body" style="padding:0 !important;">
+        <table class="table" style="margin-bottom:0;">
+          <tbody>
+            <?php if($lowStock->num_rows > 0): ?>
+              <?php while($row = $lowStock->fetch_assoc()): ?>
+              <tr>
+                <td><?php echo h($row['product_name']); ?></td>
+                <td class="text-right"><span class="label <?php echo (int)$row['quantity'] === 0 ? 'label-danger' : 'label-warning'; ?>"><?php echo (int)$row['quantity']; ?> in store</span></td>
+              </tr>
+              <?php endwhile; ?>
+            <?php else: ?>
+              <tr><td class="text-center" style="color:#697587;padding:20px;">All equipment is well stocked.</td></tr>
+            <?php endif; ?>
+          </tbody>
+        </table>
+        <div style="padding:10px 16px;"><a href="product.php">Manage equipment &rarr;</a></div>
+      </div>
+    </div>
+  </div>
 
-<!-- fullCalendar JS (kept for backward compatibility, calendar div removed) -->
-<script src="assets/plugins/moment/moment.min.js"></script>
-<script src="assets/plugins/fullcalendar/fullcalendar.min.js"></script>
+</div>
+<?php } ?>
 
 <script>
 $(function() {

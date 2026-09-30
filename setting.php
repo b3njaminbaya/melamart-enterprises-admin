@@ -1,95 +1,88 @@
 <?php require_once 'includes/header.php'; ?>
 
-<?php 
-$user_id = $_SESSION['userId'];
-$sql = "SELECT * FROM users WHERE user_id = {$user_id}";
-$query = $connect->query($sql);
-$result = $query->fetch_assoc();
-
-$connect->close();
+<?php
+$userId = current_user_id();
+$stmt = $connect->prepare("SELECT username, email FROM users WHERE user_id = ?");
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$result = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 ?>
 
 <div class="row">
 	<div class="col-md-12">
 		<ol class="breadcrumb">
-		  <li><a href="dashboard.php">Home</a></li>		  
-		  <li class="active">Setting</li>
+		  <li><a href="dashboard.php">Home</a></li>
+		  <li class="active">My Account</li>
 		</ol>
 
 		<div class="panel panel-default">
 			<div class="panel-heading">
-				<div class="page-heading"> <i class="glyphicon glyphicon-wrench"></i> Setting</div>
+				<div class="page-heading"> <i class="glyphicon glyphicon-cog"></i> My Account</div>
 			</div> <!-- /panel-heading -->
 
 			<div class="panel-body">
 
-				
-
-				<form action="php_action/changeUsername.php" method="post" class="form-horizontal" id="changeUsernameForm">
+				<form action="php_action/changeUsername.php" method="post" class="form-horizontal" id="changeUsernameForm" novalidate>
 					<fieldset>
-						<legend>Change Username</legend>
+						<legend>Username</legend>
 
-						<div class="changeUsenrameMessages"></div>			
+						<div class="changeUsernameMessages"></div>
 
 						<div class="form-group">
 					    <label for="username" class="col-sm-2 control-label">Username</label>
 					    <div class="col-sm-10">
-					      <input type="text" class="form-control" id="username" name="username" placeholder="Usename" value="<?php echo $result['username']; ?>"/>
+					      <input type="text" class="form-control" id="username" name="username" autocomplete="username" value="<?php echo h($result['username'] ?? ''); ?>"/>
 					    </div>
 					  </div>
 
 					  <div class="form-group">
 					    <div class="col-sm-offset-2 col-sm-10">
-					    	<input type="hidden" name="user_id" id="user_id" value="<?php echo $result['user_id'] ?>" /> 
-					      <button type="submit" class="btn btn-success" data-loading-text="Loading..." id="changeUsernameBtn"> <i class="glyphicon glyphicon-ok-sign"></i> Save Changes </button>
+					      <button type="submit" class="btn btn-primary" data-loading-text="Saving…" id="changeUsernameBtn"> <i class="glyphicon glyphicon-ok-sign"></i> Save username </button>
 					    </div>
 					  </div>
 					</fieldset>
 				</form>
 
-				<form action="php_action/changePassword.php" method="post" class="form-horizontal" id="changePasswordForm">
+				<form action="php_action/changePassword.php" method="post" class="form-horizontal" id="changePasswordForm" novalidate>
 					<fieldset>
-						<legend>Change Password</legend>
+						<legend>Password</legend>
 
 						<div class="changePasswordMessages"></div>
 
 						<div class="form-group">
-					    <label for="password" class="col-sm-2 control-label">Current Password</label>
+					    <label for="password" class="col-sm-2 control-label">Current password</label>
 					    <div class="col-sm-10">
-					      <input type="password" class="form-control" id="password" name="password" placeholder="Current Password">
+					      <input type="password" class="form-control" id="password" name="password" autocomplete="current-password">
 					    </div>
 					  </div>
 
 					  <div class="form-group">
 					    <label for="npassword" class="col-sm-2 control-label">New password</label>
 					    <div class="col-sm-10">
-					      <input type="password" class="form-control" id="npassword" name="npassword" placeholder="New Password">
+					      <input type="password" class="form-control" id="npassword" name="npassword" autocomplete="new-password">
+					      <p class="help-block small">At least 8 characters.</p>
 					    </div>
 					  </div>
 
 					  <div class="form-group">
-					    <label for="cpassword" class="col-sm-2 control-label">Confirm Password</label>
+					    <label for="cpassword" class="col-sm-2 control-label">Confirm new password</label>
 					    <div class="col-sm-10">
-					      <input type="password" class="form-control" id="cpassword" name="cpassword" placeholder="Confirm Password">
+					      <input type="password" class="form-control" id="cpassword" name="cpassword" autocomplete="new-password">
 					    </div>
 					  </div>
 
 					  <div class="form-group">
 					    <div class="col-sm-offset-2 col-sm-10">
-					    	<input type="hidden" name="user_id" id="user_id" value="<?php echo $result['user_id'] ?>" /> 
-					      <button type="submit" class="btn btn-primary"> <i class="glyphicon glyphicon-ok-sign"></i> Save Changes </button>
-					      
+					      <button type="submit" class="btn btn-primary" data-loading-text="Saving…" id="changePasswordBtn"> <i class="glyphicon glyphicon-ok-sign"></i> Change password </button>
 					    </div>
 					  </div>
-
-
 					</fieldset>
 				</form>
 
-			</div> <!-- /panel-body -->		
-
-		</div> <!-- /panel -->		
-	</div> <!-- /col-md-12 -->	
+			</div> <!-- /panel-body -->
+		</div> <!-- /panel -->
+	</div> <!-- /col-md-12 -->
 </div> <!-- /row-->
 
 

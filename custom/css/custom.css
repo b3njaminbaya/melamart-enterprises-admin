@@ -18,13 +18,95 @@ div.kv-avatar div.file-input div.file-preview { width: 200px; }
 /* ─── Table utilities ────────────────────────────────── */
 .table th, .table td { vertical-align: middle; }
 .table input, .table select { width: 100%; min-width: 70px; }
+.table .text-nowrap, .text-nowrap { white-space: nowrap; }
+.table td .sub { display: block; font-size: 11.5px; color: var(--mel-text-muted); }
 
-/* ─── Toast close button ─────────────────────────────── */
+/* ─── Toasts ─────────────────────────────────────────── */
+#toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 3000;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+}
+#toast-container .toast-notification { margin-bottom: 10px; }
 .toast-notification .close        { margin-left: 15px; opacity: .8; }
 .toast-notification .close:hover  { opacity: 1; }
 
 /* ─── Prevent double-submit ──────────────────────────── */
 button:disabled { opacity: .55; cursor: not-allowed; transform: none !important; }
 
-/* ─── Dashboard datepicker hack ──────────────────────── */
-.ui-datepicker-calendar { display: none; }
+/* ─── Date picker (jQuery UI) in brand colours ───────── */
+.ui-datepicker { z-index: 2000 !important; font-size: 13px; padding: 6px; background: #fff !important; border: 1px solid var(--mel-border) !important; box-shadow: var(--mel-shadow-md); border-radius: var(--mel-radius); }
+.ui-datepicker .ui-datepicker-header { background: var(--mel-navy); border: none; color: #fff; }
+.ui-datepicker .ui-datepicker-title select { color: var(--mel-text); font-size: 12.5px; margin: 1px 2px; }
+.ui-datepicker .ui-state-default { background: #fff; border-color: var(--mel-border); text-align: center; }
+.ui-datepicker .ui-state-highlight { background: var(--mel-yellow-light); color: var(--mel-navy-dark); }
+.ui-datepicker .ui-state-active,
+.ui-datepicker .ui-state-hover { background: var(--mel-navy); color: #fff; border-color: var(--mel-navy); }
+input.hasDatepicker { background-color: #fff; cursor: pointer; }
+
+/* ─── Order form ─────────────────────────────────────── */
+#productTable td { padding: 6px 8px; }
+#productTable .available { font-weight: 600; }
+.order-summary .form-group { margin-bottom: 8px !important; }
+.order-summary .grand-total input { font-weight: 700; font-size: 15px; }
+.help-block.small { font-size: 12px; margin-bottom: 0; }
+.form-section-title {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mel-navy);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  border-bottom: 1px solid var(--mel-border);
+  padding-bottom: 6px;
+  margin: 18px 0 14px;
+}
+.form-section-title:first-child { margin-top: 0; }
+
+/* ─── Filters bar ────────────────────────────────────── */
+.filter-bar { margin-bottom: 14px; }
+.filter-bar select { display: inline-block; width: auto; min-width: 180px; }
+
+/* ─── Dashboard stats ────────────────────────────────── */
+.stat-card {
+  display: block;
+  background: var(--mel-surface);
+  border: 1px solid var(--mel-border);
+  border-left: 4px solid var(--mel-navy);
+  border-radius: var(--mel-radius-lg);
+  box-shadow: var(--mel-shadow-sm);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  color: var(--mel-text) !important;
+}
+a.stat-card:hover { text-decoration: none; box-shadow: var(--mel-shadow-md); }
+.stat-card .stat-label { font-size: 12px; color: var(--mel-text-muted); text-transform: uppercase; letter-spacing: .3px; }
+.stat-card .stat-value { font-family: 'Montserrat', sans-serif; font-size: 22px; font-weight: 700; color: var(--mel-navy); margin-top: 4px; }
+.stat-card.stat-warning { border-left-color: var(--mel-yellow); }
+.stat-card.stat-danger  { border-left-color: #c62828; }
+.stat-card.stat-danger .stat-value { color: #c62828; }
+
+/* ─── Order form on phones: each product row becomes a card ─ */
+@media (max-width: 767px) {
+  #productTable thead { display: none; }
+  #productTable, #productTable tbody, #productTable tr, #productTable td { display: block; width: 100%; }
+  #productTable tr {
+    border: 1px solid var(--mel-border);
+    border-radius: var(--mel-radius);
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  #productTable td { border: none !important; padding: 4px 0 !important; text-align: left !important; }
+  #productTable td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--mel-text-muted);
+  }
+  .order-summary { margin-top: 18px; }
+}

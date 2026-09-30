@@ -16,10 +16,11 @@ function loadOverdueCount() {
         url: 'php_action/getOverdueOrders.php',
         type: 'GET',
         dataType: 'json',
+        global: false, // background refresh: never show error toasts
         success: function(response) {
             if(response.success && response.count > 0) {
                 $('#overdue-badge').text(response.count).show();
-                $('#overdue-badge').addClass('badge-danger');
+                $('#overdue-badge').addClass('badge-danger').attr('title', response.count + ' overdue order(s)');
             } else {
                 $('#overdue-badge').text('').hide();
             }

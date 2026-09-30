@@ -1,157 +1,98 @@
-<?php 
-
+<?php
+/*
+ * Printable order report. Opened in a new tab with the report filters as GET parameters.
+ */
 require_once 'core.php';
+require_once 'report_query.php';
 
-if($_POST) {
+require_admin();
 
-	$startDate = $_POST['startDate'];
-	$date = DateTime::createFromFormat('m/d/Y',$startDate);
-	$start_date = $date->format("Y-m-d");
-
-	$endDate = $_POST['endDate'];
-	$format = DateTime::createFromFormat('m/d/Y',$endDate);
-	$end_date = $format->format("Y-m-d");
-
-	$sql = "SELECT orders.*, 
-					(CASE 
-						WHEN orders.payment_status = 1 THEN 'Full Payment'
-						WHEN orders.payment_status = 2 THEN 'Advance Payment'
-						WHEN orders.payment_status = 3 THEN 'No Payment'
-						ELSE 'Unknown'
-					END) as payment_status_text,
-					(CASE 
-						WHEN orders.order_status = 0 THEN 'Pending'
-						WHEN orders.order_status = 1 THEN 'Completed'
-						WHEN orders.order_status = 2 THEN 'Cancelled'
-						ELSE 'Unknown'
-					END) as order_status_text
-			FROM orders 
-			WHERE order_date >= '$start_date' 
-			AND order_date <= '$end_date' 
-			AND order_status != 2"; // Exclude cancelled orders
-	$query = $connect->query($sql);
-
-	$table = '
-	<table border="1" cellspacing="0" cellpadding="5" style="width:100%; font-size: 12px;">
-		<tr style="background-color: #f2f2f2;">
-			<th>#</th>
-			<th>Order Date</th>
-			<th>Expected Return</th>
-			<th>Returned Date</th>
-			<th>Site Location</th>
-			<th>Client Name</th>
-			<th>Client Contact</th>
-			<th>Driver Name</th>
-			<th>Driver Contact</th>
-			<th>Sub Total</th>
-			<th>VAT</th>
-			<th>Discount</th>
-			<th>Grand Total</th>
-			<th>Paid</th>
-			<th>Due</th>
-			<th>Payment Type</th>
-			<th>Payment Status</th>
-			<th>Payment Place</th>
-			<th>Order Status</th>
-		</tr>';
-
-	$totalAmount = 0;
-	$totalPaid = 0;
-	$totalDue = 0;
-	$totalDiscount = 0;
-	$totalVat = 0;
-	$rowNumber = 1;
-	
-	while ($result = $query->fetch_assoc()) {
-		// Format payment type
-		$paymentType = '';
-		switch($result['payment_type']) {
-			case 1: $paymentType = 'Cheque'; break;
-			case 2: $paymentType = 'Cash'; break;
-			case 3: $paymentType = 'Credit Card'; break;
-			default: $paymentType = 'N/A';
-		}
-		
-		// Format payment place
-		$paymentPlace = '';
-		switch($result['payment_place']) {
-			case 1: $paymentPlace = 'In Gujarat'; break;
-			case 2: $paymentPlace = 'Out of Gujarat'; break;
-			default: $paymentPlace = 'N/A';
-		}
-		
-		// Format dates
-		$orderDate = date("d/m/Y", strtotime($result['order_date']));
-		$expectReturnDate = ($result['expect_return_date'] != '0000-00-00') ? date("d/m/Y", strtotime($result['expect_return_date'])) : 'Not Set';
-		$returnedDate = ($result['returned_date'] != '0000-00-00') ? date("d/m/Y", strtotime($result['returned_date'])) : 'Not Returned';
-		
-		$table .= '<tr>
-			<td align="center">'.$rowNumber.'</td>
-			<td align="center">'.$orderDate.'</td>
-			<td align="center">'.$expectReturnDate.'</td>
-			<td align="center">'.$returnedDate.'</td>
-			<td>'.$result['site_location'].'</td>
-			<td>'.$result['client_name'].'</td>
-			<td align="center">'.$result['client_contact'].'</td>
-			<td>'.$result['driver_name'].'</td>
-			<td align="center">'.$result['driver_contact'].'</td>
-			<td align="right">'.number_format($result['sub_total'], 2).'</td>
-			<td align="right">'.number_format($result['vat'], 2).'</td>
-			<td align="right">'.number_format($result['discount'], 2).'</td>
-			<td align="right">'.number_format($result['grand_total'], 2).'</td>
-			<td align="right">'.number_format($result['paid'], 2).'</td>
-			<td align="right">'.number_format($result['due'], 2).'</td>
-			<td align="center">'.$paymentType.'</td>
-			<td align="center">'.$result['payment_status_text'].'</td>
-			<td align="center">'.$paymentPlace.'</td>
-			<td align="center">'.$result['order_status_text'].'</td>
-		</tr>';	
-		
-		$totalAmount += $result['grand_total'];
-		$totalPaid += $result['paid'];
-		$totalDue += $result['due'];
-		$totalDiscount += $result['discount'];
-		$totalVat += $result['vat'];
-		$rowNumber++;
-	}
-	
-	// Summary row
-	$table .= '<tr style="background-color: #e8f4f8; font-weight: bold;">
-		<td colspan="9" align="right"><strong>Totals:</strong></td>
-		<td align="right"><strong>'.number_format($totalAmount - $totalVat + $totalDiscount, 2).'</strong></td>
-		<td align="right"><strong>'.number_format($totalVat, 2).'</strong></td>
-		<td align="right"><strong>'.number_format($totalDiscount, 2).'</strong></td>
-		<td align="right"><strong>'.number_format($totalAmount, 2).'</strong></td>
-		<td align="right"><strong>'.number_format($totalPaid, 2).'</strong></td>
-		<td align="right"><strong>'.number_format($totalDue, 2).'</strong></td>
-		<td colspan="4"></td>
-	</tr>';
-	
-	$table .= '</table>';
-	
-	// Add report header
-	$reportHeader = '
-	<div style="text-align: center; margin-bottom: 20px;">
-		<h2>Order Report</h2>
-		<p>Period: '.date("d/m/Y", strtotime($start_date)).' to '.date("d/m/Y", strtotime($end_date)).'</p>
-		<p>Generated on: '.date("d/m/Y H:i:s").'</p>
-	</div>
-	';
-	
-	$summary = '
-	<div style="margin-top: 20px; padding: 10px; background-color: #f9f9f9; border: 1px solid #ddd;">
-		<h3>Summary</h3>
-		<p><strong>Total Orders:</strong> '.($rowNumber - 1).'</p>
-		<p><strong>Total Grand Total:</strong> '.number_format($totalAmount, 2).'</p>
-		<p><strong>Total Paid:</strong> '.number_format($totalPaid, 2).'</p>
-		<p><strong>Total Due:</strong> '.number_format($totalDue, 2).'</p>
-		<p><strong>Total Discount:</strong> '.number_format($totalDiscount, 2).'</p>
-		<p><strong>Total VAT:</strong> '.number_format($totalVat, 2).'</p>
-	</div>
-	';
-
-	echo $reportHeader . $table . $summary;
-
+list($filters, $error) = read_report_filters($_GET);
+if($error) {
+    http_response_code(400);
+    echo '<p style="font-family:sans-serif;padding:30px;">' . h($error) . '</p>';
+    exit();
 }
 
+$rows = fetch_report_rows($connect, $filters);
+$summary = report_summary($rows);
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Order report <?php echo h(format_date($filters['start'])); ?> – <?php echo h(format_date($filters['end'])); ?></title>
+<style>
+  body { font-family: 'Open Sans', Arial, sans-serif; color: #1a2634; font-size: 11px; margin: 20px; }
+  h2 { color: #0b3d5e; margin: 0; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #f5a800; padding-bottom: 8px; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #0b3d5e; color: #fff; text-align: left; padding: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  td { border-bottom: 1px solid #dde3ea; padding: 5px 6px; }
+  .num { text-align: right; white-space: nowrap; }
+  tfoot td { font-weight: 700; border-top: 2px solid #0b3d5e; }
+  .toolbar { text-align: right; margin-bottom: 10px; }
+  .toolbar button { background: #0b3d5e; color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+  @media print { .toolbar { display: none; } body { margin: 0; } @page { size: landscape; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button type="button" onclick="window.print()">Print</button></div>
+<div class="head">
+  <div>
+    <h2><?php echo h(MEL_COMPANY_NAME); ?> — Order report</h2>
+    Period: <?php echo h(format_date($filters['start'])); ?> to <?php echo h(format_date($filters['end'])); ?>
+  </div>
+  <div>Generated <?php echo date('d/m/Y H:i'); ?></div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>Order date</th><th>Expected</th><th>Returned</th><th>Branch</th><th>Site</th><th>Client</th><th>Phone</th>
+      <th class="num">Grand total</th><th class="num">Paid</th><th class="num">Balance</th><th>Payment</th><th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <?php if(!$rows) { ?>
+    <tr><td colspan="13" style="text-align:center;padding:20px;">No orders match these filters.</td></tr>
+    <?php } ?>
+    <?php foreach($rows as $r) { $d = report_row_display($r); ?>
+    <tr>
+      <td><?php echo $d['order_id']; ?></td>
+      <td><?php echo h($d['order_date']); ?></td>
+      <td><?php echo h($d['expect_return_date']); ?></td>
+      <td><?php echo h($d['returned_date']); ?></td>
+      <td><?php echo h($d['branch']); ?></td>
+      <td><?php echo h($d['site_location']); ?></td>
+      <td><?php echo h($d['client_name']); ?></td>
+      <td><?php echo h($d['client_contact']); ?></td>
+      <td class="num"><?php echo h($d['grand_total']); ?></td>
+      <td class="num"><?php echo h($d['paid']); ?></td>
+      <td class="num"><?php echo h($d['due']); ?></td>
+      <td><?php echo h($d['payment_status']); ?></td>
+      <td><?php echo h($d['order_status']); ?></td>
+    </tr>
+    <?php } ?>
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="8"><?php echo (int)$summary['total_orders']; ?> order(s) — totals (KSh)</td>
+      <td class="num"><?php echo money($summary['grand_total']); ?></td>
+      <td class="num"><?php echo money($summary['paid']); ?></td>
+      <td class="num"><?php echo money($summary['due']); ?></td>
+      <td colspan="2"></td>
+    </tr>
+  </tfoot>
+</table>
+
+<p style="margin-top:14px;">
+  Sub total: KSh <?php echo money($summary['sub_total']); ?> ·
+  <?php if($summary['vat'] > 0) { ?>VAT: KSh <?php echo money($summary['vat']); ?> · <?php } ?>
+  Late return charges: KSh <?php echo money($summary['late_fee']); ?> ·
+  Discounts: KSh <?php echo money($summary['discount']); ?>
+</p>
+
+<script>window.addEventListener('load', function() { window.print(); });</script>
+</body>
+</html>

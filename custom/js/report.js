@@ -1,170 +1,92 @@
 $(document).ready(function() {
-	// order date picker
-	$("#startDate").datepicker();
-	$("#endDate").datepicker();
+	$('#navReport').addClass('active');
 
-	// Generate PDF/Print Report
-	$("#getOrderReportForm").unbind('submit').bind('submit', function() {
-		var startDate = $("#startDate").val();
-		var endDate = $("#endDate").val();
+	$("#startDate, #endDate").datepicker({ onSelect: function() { $(this).trigger('change'); } });
 
-		if(startDate == "" || endDate == "") {
-			if(startDate == "") {
-				$("#startDate").closest('.form-group').addClass('has-error');
-				$("#startDate").after('<p class="text-danger">The Start Date is required</p>');
-			} else {
-				$(".form-group").removeClass('has-error');
-				$(".text-danger").remove();
-			}
+	function validDates() {
+		var $form = $('#getOrderReportForm');
+		clearFieldErrors($form);
+		$('#report-messages').empty();
+		var start = parseDMY($('#startDate').val());
+		var end = parseDMY($('#endDate').val());
+		var ok = true;
+		if(!start) { fieldError($('#startDate'), 'Enter a date as dd/mm/yyyy.'); ok = false; }
+		if(!end) { fieldError($('#endDate'), 'Enter a date as dd/mm/yyyy.'); ok = false; }
+		if(ok && end < start) { fieldError($('#endDate'), 'Cannot be before the start date.'); ok = false; }
+		return ok;
+	}
 
-			if(endDate == "") {
-				$("#endDate").closest('.form-group').addClass('has-error');
-				$("#endDate").after('<p class="text-danger">The End Date is required</p>');
-			} else {
-				$(".form-group").removeClass('has-error');
-				$(".text-danger").remove();
-			}
-		} else {
-			$(".form-group").removeClass('has-error');
-			$(".text-danger").remove();
+	function queryString() {
+		return $('#getOrderReportForm').serialize();
+	}
 
-			var form = $(this);
+	// View report in page
+	$('#getOrderReportForm').on('submit', function(e) {
+		e.preventDefault();
+		if(!validDates()) { return false; }
 
-			$.ajax({
-				url: form.attr('action'),
-				type: form.attr('method'),
-				data: form.serialize(),
-				dataType: 'text',
-				success:function(response) {
-					var mywindow = window.open('', 'Order Report', 'height=400,width=800');
-	        mywindow.document.write('<html><head><title>Order Report</title>');        
-	        mywindow.document.write('<style>table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}</style>');
-	        mywindow.document.write('</head><body>');
-	        mywindow.document.write(response);
-	        mywindow.document.write('</body></html>');
-
-	        mywindow.document.close();
-	        mywindow.focus();
-	        mywindow.print();
-	        mywindow.close();
-				}
-			});
-		}
-		return false;
-	});
-
-	// View Report in Page
-	$("#viewReportBtn").on('click', function() {
-		var startDate = $("#startDate").val();
-		var endDate = $("#endDate").val();
-
-		if(startDate == "" || endDate == "") {
-			$("#report-messages").html('<div class="alert alert-danger">Please select start and end dates.</div>');
-			return;
-		}
-
-		loadReportData();
-	});
-
-	// Export CSV
-	$("#exportReportBtn").on('click', function() {
-		var startDate = $("#startDate").val();
-		var endDate = $("#endDate").val();
-
-		if(startDate == "" || endDate == "") {
-			$("#report-messages").html('<div class="alert alert-danger">Please select start and end dates.</div>');
-			return;
-		}
-
-		exportToCSV();
-	});
-
-	function loadReportData() {
-		$("#generateReportBtn").button('loading');
-		
+		var $btn = $('#viewReportBtn').button('loading');
 		$.ajax({
 			url: 'php_action/getOrderReportData.php',
 			type: 'POST',
-			data: {
-				startDate: $("#startDate").val(),
-				endDate: $("#endDate").val(),
-				searchClient: $("#searchClient").val(),
-				paymentStatusFilter: $("#paymentStatusFilter").val(),
-				orderStatusFilter: $("#orderStatusFilter").val(),
-				paymentTypeFilter: $("#paymentTypeFilter").val()
-			},
+			data: queryString(),
 			dataType: 'json',
 			success: function(response) {
-				$("#generateReportBtn").button('reset');
-				
+				$btn.button('reset');
 				if(response.success) {
 					displayReportData(response.data, response.summary);
-					$("#reportResults").show();
+					$('#reportResults').show();
 				} else {
-					$("#report-messages").html('<div class="alert alert-danger">' + response.message + '</div>');
+					showAlert('#report-messages', 'error', response.messages);
 				}
-			},
-			error: function() {
-				$("#generateReportBtn").button('reset');
-				$("#report-messages").html('<div class="alert alert-danger">Error loading report data.</div>');
 			}
 		});
-	}
+		return false;
+	});
+
+	$('#printReportBtn').on('click', function() {
+		if(!validDates()) { return; }
+		var win = window.open('php_action/getOrderReport.php?' + queryString(), '_blank');
+		if(!win) { showToast('Your browser blocked the report window. Allow pop-ups for this site and try again.', 'warning'); }
+	});
+
+	$('#exportReportBtn').on('click', function() {
+		if(!validDates()) { return; }
+		window.location.href = 'php_action/exportReportCSV.php?' + queryString();
+	});
 
 	function displayReportData(data, summary) {
-		var tbody = $("#reportTableBody");
+		var tbody = $('#reportTableBody');
 		tbody.empty();
 
+		if(!data.length) {
+			tbody.append('<tr><td colspan="11" class="text-center text-muted" style="padding:20px;">No orders match these filters.</td></tr>');
+		}
 		$.each(data, function(index, order) {
-			var row = '<tr>';
-			row += '<td>' + (index + 1) + '</td>';
-			row += '<td>' + order.order_date + '</td>';
-			row += '<td>' + order.expect_return_date + '</td>';
-			row += '<td>' + order.returned_date + '</td>';
-			row += '<td>' + order.site_location + '</td>';
-			row += '<td>' + order.client_name + '</td>';
-			row += '<td>' + order.client_contact + '</td>';
-			row += '<td>' + order.driver_name + '</td>';
-			row += '<td>Ksh ' + order.grand_total + '</td>';
-			row += '<td>Ksh ' + order.paid + '</td>';
-			row += '<td>Ksh ' + order.due + '</td>';
-			row += '<td>' + order.payment_status + '</td>';
-			row += '<td>' + order.order_status + '</td>';
-			row += '</tr>';
-			tbody.append(row);
+			tbody.append('<tr>' +
+				'<td><a href="orders.php?o=editOrd&i=' + Number(order.order_id) + '">#' + Number(order.order_id) + '</a></td>' +
+				'<td>' + escapeHtml(order.order_date) + '</td>' +
+				'<td>' + escapeHtml(order.expect_return_date) + '</td>' +
+				'<td>' + escapeHtml(order.returned_date) + '</td>' +
+				'<td>' + escapeHtml(order.site_location) + '<span class="sub">' + escapeHtml(order.branch) + '</span></td>' +
+				'<td>' + escapeHtml(order.client_name) + '<span class="sub">' + escapeHtml(order.client_contact) + '</span></td>' +
+				'<td class="text-right">' + escapeHtml(order.grand_total) + '</td>' +
+				'<td class="text-right">' + escapeHtml(order.paid) + '</td>' +
+				'<td class="text-right">' + escapeHtml(order.due) + '</td>' +
+				'<td>' + escapeHtml(order.payment_status) + '</td>' +
+				'<td>' + escapeHtml(order.order_status) + '</td>' +
+				'</tr>');
 		});
 
-		// Display summary
-		var summaryHtml = '<div class="col-md-3">' +
-			'<div class="panel panel-primary">' +
-			'<div class="panel-heading">Total Orders</div>' +
-			'<div class="panel-body"><h2>' + summary.total_orders + '</h2></div>' +
-			'</div></div>' +
-			'<div class="col-md-3">' +
-			'<div class="panel panel-success">' +
-			'<div class="panel-heading">Total Revenue</div>' +
-			'<div class="panel-body"><h2>Ksh ' + summary.total_revenue + '</h2></div>' +
-			'</div></div>' +
-			'<div class="col-md-3">' +
-			'<div class="panel panel-info">' +
-			'<div class="panel-heading">Total Paid</div>' +
-			'<div class="panel-body"><h2>Ksh ' + summary.total_paid + '</h2></div>' +
-			'</div></div>' +
-			'<div class="col-md-3">' +
-			'<div class="panel panel-warning">' +
-			'<div class="panel-heading">Total Due</div>' +
-			'<div class="panel-body"><h2>Ksh ' + summary.total_due + '</h2></div>' +
-			'</div></div>';
-		
-		$("#reportSummary").html(summaryHtml);
-	}
-
-	function exportToCSV() {
-		window.location.href = 'php_action/exportReportCSV.php?startDate=' + $("#startDate").val() + 
-			'&endDate=' + $("#endDate").val() +
-			'&searchClient=' + $("#searchClient").val() +
-			'&paymentStatusFilter=' + $("#paymentStatusFilter").val() +
-			'&orderStatusFilter=' + $("#orderStatusFilter").val() +
-			'&paymentTypeFilter=' + $("#paymentTypeFilter").val();
+		var card = function(label, value, cls) {
+			return '<div class="col-xs-6 col-md-3"><div class="stat-card ' + (cls || '') + '"><div class="stat-label">' + label +
+				'</div><div class="stat-value">' + escapeHtml(value) + '</div></div></div>';
+		};
+		$('#reportSummary').html(
+			card('Orders', summary.total_orders) +
+			card('Billed (KSh)', summary.total_revenue) +
+			card('Paid (KSh)', summary.total_paid) +
+			card('Balance (KSh)', summary.total_due, 'stat-warning')
+		);
 	}
 });

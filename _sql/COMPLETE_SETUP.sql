@@ -55,20 +55,22 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `client_contact` varchar(255) NOT NULL,
   `driver_name` varchar(255) NOT NULL,
   `driver_contact` varchar(255) NOT NULL,
-  `returned_by` varchar(255) NOT NULL,
-  `returned_by_contact` varchar(255) NOT NULL,
-  `approved_by` varchar(255) NOT NULL,
+  `returned_by` varchar(255) NOT NULL DEFAULT '',
+  `returned_by_contact` varchar(255) NOT NULL DEFAULT '',
+  `approved_by` varchar(255) NOT NULL DEFAULT '',
   `sub_total` varchar(255) NOT NULL,
   `vat` varchar(255) NOT NULL,
   `total_amount` varchar(255) NOT NULL,
   `discount` varchar(255) NOT NULL,
+  `late_fee` DECIMAL(12,2) NOT NULL DEFAULT '0.00',
   `grand_total` varchar(255) NOT NULL,
   `paid` varchar(255) NOT NULL,
   `due` varchar(255) NOT NULL,
   `payment_type` int(11) NOT NULL,
+  `payment_reference` VARCHAR(100) NOT NULL DEFAULT '',
   `payment_status` int(11) NOT NULL,
-  `payment_place` int(11) NOT NULL,
-  `gstn` varchar(255) NOT NULL,
+  `payment_place` int(11) NOT NULL COMMENT 'Branch: 1 = Ruiru, 2 = Kikuyu',
+  `gstn` varchar(255) NOT NULL DEFAULT '' COMMENT 'Client KRA PIN (optional)',
   `order_status` int(11) NOT NULL DEFAULT '0',
   `user_id` int(11) NOT NULL,
   `last_late_fee_calc` DATETIME NULL DEFAULT NULL,
@@ -91,11 +93,45 @@ CREATE TABLE IF NOT EXISTS `order_item` (
   `order_id` int(11) NOT NULL DEFAULT '0',
   `product_id` int(11) NOT NULL DEFAULT '0',
   `quantity` varchar(255) NOT NULL,
+  `rental_days` INT(11) NOT NULL DEFAULT '1',
   `rate` varchar(255) NOT NULL,
   `total` varchar(255) NOT NULL,
   `order_item_status` int(11) NOT NULL DEFAULT '0',
   PRIMARY KEY (`order_item_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- --------------------------------------------------------
+
+--
+-- Payment history (one row per payment received)
+--
+
+CREATE TABLE IF NOT EXISTS `payment_history` (
+  `payment_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `order_id` INT(11) NOT NULL,
+  `amount` DECIMAL(12,2) NOT NULL,
+  `payment_type` INT(11) NOT NULL,
+  `reference` VARCHAR(100) NOT NULL DEFAULT '',
+  `payment_date` DATETIME NOT NULL,
+  `received_by` INT(11) NOT NULL,
+  PRIMARY KEY (`payment_id`),
+  INDEX `idx_payment_order` (`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- SMS log
+--
+
+CREATE TABLE IF NOT EXISTS `sms_logs` (
+  `sms_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `order_id` INT(11) NULL DEFAULT NULL,
+  `recipient` VARCHAR(30) NOT NULL,
+  `message` TEXT NOT NULL,
+  `status` VARCHAR(30) NOT NULL DEFAULT '',
+  `sent_date` DATETIME NOT NULL,
+  PRIMARY KEY (`sms_id`),
+  INDEX `idx_sms_order` (`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
 
@@ -134,7 +170,8 @@ CREATE TABLE IF NOT EXISTS `users` (
 
 --
 -- Dumping data for table `users`
--- Default admin user: username='admin', password='admin' (MD5 hash)
+-- Default admin user: username='admin', password='admin' (MD5 hash, upgraded to bcrypt on first login).
+-- CHANGE THIS PASSWORD IMMEDIATELY after installing (My Account → Password).
 --
 
 INSERT INTO `users` (`user_id`, `username`, `password`, `email`) VALUES

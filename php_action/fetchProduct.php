@@ -1,74 +1,72 @@
-<?php 	
-
+<?php
+/*
+ * Equipment table data. Shows every product that has not been removed,
+ * including ones with 0 in store (all out on hire) so they can be restocked.
+ */
 require_once 'core.php';
 
-$sql = "SELECT product.product_id, product.product_name, product.product_image, product.brand_id,
- 		product.categories_id, product.quantity, product.rate, product.daily_rate, product.active, product.status, 
- 		brands.brand_name, categories.categories_name FROM product 
-		INNER JOIN brands ON product.brand_id = brands.brand_id 
-		INNER JOIN categories ON product.categories_id = categories.categories_id  
-		WHERE product.status = 1 AND product.quantity>0";
+require_admin();
 
+$sql = "SELECT p.product_id, p.product_name, p.product_image, p.quantity, p.rate, p.daily_rate, p.active,
+               b.brand_name, c.categories_name,
+               COALESCE(h.on_hire, 0) AS on_hire
+        FROM product p
+        LEFT JOIN brands b ON p.brand_id = b.brand_id
+        LEFT JOIN categories c ON p.categories_id = c.categories_id
+        LEFT JOIN (
+            SELECT oi.product_id, SUM(oi.quantity) AS on_hire
+            FROM order_item oi
+            INNER JOIN orders o ON o.order_id = oi.order_id
+            WHERE o.order_status != 2 AND o.returned_date IS NULL
+            GROUP BY oi.product_id
+        ) h ON h.product_id = p.product_id
+        WHERE p.status = 1
+        ORDER BY p.product_name";
 $result = $connect->query($sql);
 
 $output = array('data' => array());
+while($row = $result->fetch_assoc()) {
+    $productId = (int)$row['product_id'];
+    $inStore = (int)$row['quantity'];
 
-if($result->num_rows > 0) { 
+    $active = (int)$row['active'] === 1
+        ? "<span class='label label-success'>Available</span>"
+        : "<span class='label label-default'>Not available</span>";
 
- $active = ""; 
+    $stock = $inStore;
+    if($inStore === 0) {
+        $stock = "<span class='label label-danger'>0</span>";
+    } elseif($inStore <= 3) {
+        $stock = "<span class='label label-warning'>" . $inStore . "</span>";
+    }
 
- while($row = $result->fetch_array()) {
- 	$productId = $row[0];
- 	// active 
- 	if($row[8] == 1) { // Changed index from 7 to 8 due to added daily_rate field
- 		// activate member
- 		$active = "<label class='label label-success'>Available</label>";
- 	} else {
- 		// deactivate member
- 		$active = "<label class='label label-danger'>Not Available</label>";
- 	} // /else
-
- 	$button = '<!-- Single button -->
-	<div class="btn-group">
-	  <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+    $button = '<div class="btn-group">
+	  <button type="button" class="btn btn-default btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
 	    Action <span class="caret"></span>
 	  </button>
-	  <ul class="dropdown-menu">
-	    <li><a type="button" data-toggle="modal" id="editProductModalBtn" data-target="#editProductModal" onclick="editProduct('.$productId.')"> <i class="glyphicon glyphicon-edit"></i> Edit</a></li>
-	    <li><a type="button" data-toggle="modal" data-target="#removeProductModal" id="removeProductModalBtn" onclick="removeProduct('.$productId.')"> <i class="glyphicon glyphicon-trash"></i> Remove</a></li>       
+	  <ul class="dropdown-menu dropdown-menu-right">
+	    <li><a href="#" onclick="editProduct(' . $productId . '); return false;"><i class="glyphicon glyphicon-edit"></i> Edit</a></li>
+	    <li><a href="#" onclick="removeProduct(' . $productId . '); return false;"><i class="glyphicon glyphicon-trash"></i> Remove</a></li>
 	  </ul>
 	</div>';
 
-	$brand = $row[10]; // Changed index from 9 to 10
-	$category = $row[11]; // Changed index from 10 to 11
+    // Stored as '../assets/images/stock/x.jpg' (relative to php_action/)
+    $imageUrl = preg_replace('#^\.\./#', '', (string)$row['product_image']);
+    if($imageUrl === '') {
+        $imageUrl = 'assets/images/photo_default.png';
+    }
 
-	$imageUrl = substr($row[2], 3);
-	$productImage = "<img class='img-round' src='".$imageUrl."' style='height:30px; width:50px;'  />";
+    $output['data'][] = array(
+        "<img class='img-rounded' src='" . h($imageUrl) . "' alt='' style='height:36px; width:54px; object-fit:cover;' />",
+        h($row['product_name']),
+        array('display' => money($row['daily_rate']), 'sort' => (float)$row['daily_rate']),
+        array('display' => (string)$stock, 'sort' => $inStore),
+        (int)$row['on_hire'],
+        h($row['brand_name'] ?? '—'),
+        h($row['categories_name'] ?? '—'),
+        $active,
+        $button,
+    );
+}
 
- 	$output['data'][] = array( 		
- 		// image
- 		$productImage,
- 		// product name
- 		$row[1], 
- 		// purchase rate
- 		$row[6],
- 		// daily rental rate - NEW COLUMN
- 		$row[7],
- 		// quantity 
- 		$row[5], 		 	
- 		// brand
- 		$brand,
- 		// category 		
- 		$category,
- 		// active
- 		$active,
- 		// button
- 		$button 		
- 		); 	
- } // /while 
-
-}// if num_rows
-
-$connect->close();
-
-echo json_encode($output);
+json_out($output);

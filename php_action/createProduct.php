@@ -1,60 +1,33 @@
 <?php
 require_once 'core.php';
-require_once 'csrf.php';
+require_once 'product_input.php';
 
-$valid = ['success' => false, 'messages' => ''];
+require_admin();
+require_post();
+csrf_verify();
 
-if($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
-
-    $productName   = trim($_POST['productName']    ?? '');
-    $quantity      = intval($_POST['quantity']      ?? 0);
-    $rate          = floatval($_POST['rate']        ?? 0);
-    $dailyRate     = floatval($_POST['dailyRate']   ?? 0);
-    $brandId       = intval($_POST['brandName']     ?? 0);   // select sends brand_id
-    $categoryId    = intval($_POST['categoryName']  ?? 0);   // select sends categories_id
-    $productStatus = intval($_POST['productStatus'] ?? 1);
-
-    if($productName === '') {
-        $valid['messages'] = "Product name is required.";
-        echo json_encode($valid); exit();
-    }
-
-    $fileInfo = $_FILES['productImage'] ?? null;
-    if(!$fileInfo || $fileInfo['error'] !== UPLOAD_ERR_OK) {
-        $valid['messages'] = "Please select a valid image to upload.";
-        echo json_encode($valid); exit();
-    }
-
-    $ext = strtolower(pathinfo($fileInfo['name'], PATHINFO_EXTENSION));
-    if(!in_array($ext, ['gif','jpg','jpeg','png'])) {
-        $valid['messages'] = "Invalid image format. Allowed: gif, jpg, jpeg, png.";
-        echo json_encode($valid); exit();
-    }
-
-    if(!is_uploaded_file($fileInfo['tmp_name'])) {
-        $valid['messages'] = "Invalid file upload.";
-        echo json_encode($valid); exit();
-    }
-
-    $url = '../assets/images/stock/' . uniqid(rand()) . '.' . $ext;
-    if(!move_uploaded_file($fileInfo['tmp_name'], $url)) {
-        $valid['messages'] = "Error while uploading image.";
-        echo json_encode($valid); exit();
-    }
-
-    $stmt = $connect->prepare(
-        "INSERT INTO product (product_name, product_image, brand_id, categories_id, quantity, rate, daily_rate, active, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)"
-    );
-    $stmt->bind_param("ssiidddi", $productName, $url, $brandId, $categoryId, $quantity, $rate, $dailyRate, $productStatus);
-
-    if($stmt->execute()) {
-        $valid['success']  = true;
-        $valid['messages'] = "Product added successfully.";
-    } else {
-        $valid['messages'] = "Error while adding the product.";
-    }
-    $stmt->close();
-    echo json_encode($valid);
+list($p, $error) = read_product_input('');
+if($error) {
+    json_out(array('success' => false, 'messages' => $error));
 }
+
+// Photo is optional; without one the default placeholder is shown.
+$url = '../assets/images/photo_default.png';
+if(isset($_FILES['productImage']) && $_FILES['productImage']['error'] !== UPLOAD_ERR_NO_FILE) {
+    list($url, $uploadError) = store_product_image($_FILES['productImage']);
+    if($uploadError) {
+        json_out(array('success' => false, 'messages' => $uploadError));
+    }
+}
+
+$stmt = $connect->prepare(
+    "INSERT INTO product (product_name, product_image, brand_id, categories_id, quantity, rate, daily_rate, active, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)"
+);
+$qty = (string)$p['quantity'];
+$rate = number_format($p['rate'], 2, '.', '');
+$stmt->bind_param("ssiissdi", $p['name'], $url, $p['brand_id'], $p['category_id'], $qty, $rate, $p['daily_rate'], $p['active']);
+$stmt->execute();
+$stmt->close();
+
+json_out(array('success' => true, 'messages' => $p['name'] . ' has been added.'));

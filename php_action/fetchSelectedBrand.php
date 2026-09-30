@@ -1,16 +1,17 @@
-<?php 	
-
+<?php
 require_once 'core.php';
 
-$brandId = $_POST['brandId'];
+require_admin();
 
-$sql = "SELECT brand_id, brand_name, brand_active, brand_status FROM brands WHERE brand_id = $brandId";
-$result = $connect->query($sql);
+$id = (int)($_POST['brandId'] ?? 0);
+$stmt = $connect->prepare("SELECT brand_id, brand_name, brand_active FROM brands WHERE brand_id = ? AND brand_status = 1");
+$stmt->bind_param('i', $id);
+$stmt->execute();
+$row = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-if($result->num_rows > 0) { 
- $row = $result->fetch_array();
-} // if num_rows
+if(!$row) {
+    json_out(array('success' => false, 'messages' => 'Brand not found.'), 404);
+}
 
-$connect->close();
-
-echo json_encode($row);
+json_out(array('success' => true, 'id' => (int)$row['brand_id'], 'name' => $row['brand_name'], 'active' => (int)$row['brand_active']));

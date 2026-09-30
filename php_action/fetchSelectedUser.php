@@ -1,16 +1,17 @@
-<?php 	
-
+<?php
 require_once 'core.php';
 
-$userid = $_POST['userid'];
+require_admin();
 
-$sql = "SELECT * FROM users WHERE user_id = $userid";
-$result = $connect->query($sql);
+$userId = (int)($_POST['userid'] ?? 0);
+$stmt = $connect->prepare("SELECT user_id, username, email FROM users WHERE user_id = ?");
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$row = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-if($result->num_rows > 0) { 
- $row = $result->fetch_array();
-} // if num_rows
+if(!$row) {
+    json_out(array('success' => false, 'messages' => 'User not found.'), 404);
+}
 
-$connect->close();
-
-echo json_encode($row);
+json_out(array('success' => true, 'user_id' => (int)$row['user_id'], 'username' => $row['username'], 'email' => $row['email']));

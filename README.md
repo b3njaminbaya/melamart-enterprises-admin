@@ -6,13 +6,14 @@ Internal admin system for **Melamart Enterprises Limited** — a scaffolding and
 
 ## Features
 
-- **Product management** — add, edit, remove products with image uploads and daily hire rates
-- **Brand & category management** — full CRUD with status control
-- **Order management** — create and manage hire orders, track payments, generate PDF receipts
-- **Overdue tracking** — automated overdue detection with SMS reminder integration
-- **User management** — role-based access (admin vs. staff), bcrypt passwords
-- **Reporting** — order and revenue reports with date filtering
-- **Dashboard** — live stats: active products, low stock alerts, total revenue, orders by user
+- **Equipment management** — add, edit, remove products with photos, daily hire rates, stock in store vs. on hire
+- **Brand & category management** — add/edit/remove with status control
+- **Orders** — hire orders with automatic stock tracking (out on hire → back on return/cancel), server-side pricing, late-return charges, printable invoices
+- **Payments** — M-Pesa, cash, bank transfer, cheque, card; reference codes; full payment history per order
+- **Overdue tracking** — overdue list with accrued late charges and one-click SMS reminders (Africa's Talking)
+- **User management** — administrator (user #1) vs. staff, bcrypt passwords
+- **Reports** — filter by date, branch, client, status; view, print or export to Excel (CSV)
+- **Dashboard** — on hire, overdue, monthly billing, payments received, outstanding balances, low stock
 
 ---
 
@@ -25,8 +26,8 @@ Internal admin system for **Melamart Enterprises Limited** — a scaffolding and
 | Frontend | Bootstrap 3, jQuery, DataTables, Font Awesome |
 | Fonts | Montserrat + Open Sans (Google Fonts) |
 | File uploads | Krajee Bootstrap FileInput plugin |
-| PDF generation | Handled via `printOrder.php` |
-| SMS | Configurable via `php_action/sms_reminder.php` |
+| Invoices | Printable HTML page (`php_action/printOrder.php`) — use the browser's "Save as PDF" for a PDF |
+| SMS | Africa's Talking REST API via cURL (`php_action/sms.php`) |
 
 ---
 
@@ -65,6 +66,26 @@ cp php_action/db_connect.example.php php_action/db_connect.php
 
 Edit `php_action/db_connect.php` with your local database credentials. This file is gitignored and will never be committed.
 
+**Upgrading an existing database?** Run the migration once:
+
+```bash
+mysql -u root -p store < _sql/2026-10-01_audit_fixes.sql
+```
+
+### 3b. Business settings (optional)
+
+Company details, branches and payment methods live in `php_action/config.php`.
+Secrets and per-install values (KRA PIN, VAT rate, SMS API key) go in `php_action/config.local.php` (gitignored):
+
+```bash
+cp php_action/config.local.example.php php_action/config.local.php
+```
+
+- `MEL_VAT_RATE` — leave at `0` unless the company is VAT-registered (then `16`).
+- `MEL_KRA_PIN` — printed on invoices when set.
+- `MEL_SMS_*` — Africa's Talking username/API key; enables SMS reminders.
+- `$MEL_INVOICE_TERMS` — the terms printed on invoices (review the defaults with management).
+
 ### 4. Run locally
 
 ```bash
@@ -86,7 +107,7 @@ melamart-enterprises-admin/
 │   ├── css/
 │   │   ├── melamart-theme.css   # Brand design system (Navy + Yellow)
 │   │   └── custom.css           # Utility overrides
-│   └── js/                  # Feature-specific JS (one file per page)
+│   └── js/                  # app.js (shared: toasts, CSRF, errors, date pickers) + one file per page
 ├── docs/                    # Developer documentation (web-blocked via .htaccess)
 ├── images/                  # System images (logo, favicon)
 ├── includes/
@@ -94,11 +115,15 @@ melamart-enterprises-admin/
 │   └── footer.php           # Global scripts
 ├── php_action/              # All AJAX handlers and backend utilities
 │   ├── core.php             # Session guard, DB + CSRF bootstrap (loaded by every page)
+│   ├── config.php           # Business settings (branches, payment methods, VAT, SMS)
+│   ├── helpers.php          # Shared helpers: dates (dd/mm/yyyy), phones (+254), money, stock
+│   ├── order_service.php    # The one place orders are validated, priced and saved
 │   ├── csrf.php             # CSRF token generation and verification
 │   ├── db_connect.php       # Database credentials — gitignored, see db_connect.example.php
 │   └── *.php                # Feature handlers (create/edit/remove/fetch per entity)
 ├── storage/
-│   └── receipts/            # Generated PDF receipts (gitignored)
+│   ├── logs/                # SMS cron log (gitignored)
+│   └── receipts/            # (unused, gitignored)
 ├── brand.php
 ├── categories.php
 ├── cron_sms_reminder.php    # Run via server cron — see docs/CRON_SETUP.md
@@ -125,7 +150,8 @@ melamart-enterprises-admin/
 | Session fixation | `session_regenerate_id(true)` on every successful login. |
 | XSS | All output through `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')`. |
 | Sensitive files | `docs/` is blocked from web access via `.htaccess`. `db_connect.php` is gitignored. |
-| Auth guard | Every page boots through `php_action/core.php` which checks `isset($_SESSION['userId'])`. |
+| Auth guard | Every page boots through `php_action/core.php` which checks `isset($_SESSION['userId'])`. Expired sessions: pages redirect to login, AJAX gets a 401 and the UI redirects. |
+| Admin-only | `require_admin()` on admin pages *and* their handlers (not just hidden menu links). |
 
 ---
 
@@ -133,13 +159,13 @@ melamart-enterprises-admin/
 
 After importing the SQL schema, log in with the credentials defined in the `users` table. See `_sql/QUICK_START.md` for details.
 
-> **Never use the default password in production.** Change it immediately after first login via Settings → Change Password.
+> **Never use the default password in production.** Change it immediately after first login via My Account → Password.
 
 ---
 
 ## Cron Job
 
-The SMS overdue reminder runs via a scheduled cron job. See `docs/CRON_SETUP.md` for the exact crontab entry and configuration.
+A daily overdue digest SMS to the administrator runs via cron (CLI only). See `docs/CRON_SETUP.md` for the exact crontab entry and configuration.
 
 ---
 

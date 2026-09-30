@@ -1,1191 +1,461 @@
+/*
+ * order.js — New Order, Edit Order and Manage Orders.
+ * Totals shown here are a preview; the server recalculates everything.
+ */
 var manageOrderTable;
 
 $(document).ready(function() {
-	// Payment place GST label change
-	$("#paymentPlace").change(function(){
-		if($("#paymentPlace").val() == 2) {
-			$(".gst").text("IGST 18%");
-		} else {
-			$(".gst").text("GST 18%");	
+	var divRequest = $(".div-request").text();
+
+	$("#navOrder").addClass('active');
+
+	if(divRequest === 'add' || divRequest === 'editOrd') {
+		$(divRequest === 'add' ? '#topNavAddOrder' : '#topNavManageOrder').addClass('active');
+		initOrderForm(window.ORDER_FORM);
+	} else if(divRequest === 'manord') {
+		$('#topNavManageOrder').addClass('active');
+		initManageOrders();
+	}
+
+	$('#updatePaymentOrderBtn').on('click', submitPayment);
+});
+
+// ─────────────────────────────────────────────────────────
+// Order form (add + edit)
+// ─────────────────────────────────────────────────────────
+
+var orderForm = { products: {}, productList: [], originalRates: {}, isEdit: false, alreadyPaid: 0, vatRate: 0 };
+
+function initOrderForm(config) {
+	orderForm.isEdit = config.isEdit;
+	orderForm.productList = config.products;
+	orderForm.alreadyPaid = Number(config.alreadyPaid) || 0;
+	orderForm.vatRate = Number(config.vatRate) || 0;
+	$.each(config.products, function(i, p) { orderForm.products[p.id] = p; });
+	$.each(config.items, function(i, item) { orderForm.originalRates[item.product_id] = item.rate; });
+
+	$('#orderDate, #expectReturnDate').datepicker({ onSelect: function() { $(this).trigger('change'); } });
+	$('#returnedDate').datepicker({ maxDate: 0, onSelect: function() { $(this).trigger('change'); } });
+
+	var scheduled = scheduledDays();
+	if(config.items.length) {
+		$.each(config.items, function(i, item) {
+			addRow(item, item.rental_days !== scheduled);
+		});
+	} else {
+		addRow(null, false);
+	}
+
+	$('#addRowBtn').on('click', function() { addRow(null, false); });
+
+	$('#orderDate, #expectReturnDate').on('change', function() {
+		var days = scheduledDays();
+		$('#productTable tbody tr').each(function() {
+			if(!$(this).data('manualDays')) {
+				$(this).find('.rental-days').val(days);
+			}
+		});
+		recalcOrder();
+	});
+
+	$('#returnedDate').on('change', function() {
+		var hasDate = $.trim($(this).val()) !== '';
+		var $status = $('#orderStatus');
+		if(hasDate && $status.val() === '0') { $status.val('1'); }
+		if(!hasDate && $status.val() === '1') { $status.val('0'); }
+		recalcOrder();
+	});
+
+	$('#orderStatus').on('change', function() {
+		if($(this).val() === '1' && $.trim($('#returnedDate').val()) === '') {
+			$('#returnedDate').datepicker('setDate', new Date()).trigger('change');
+			showToast('Returned date set to today. Change it if the equipment came back on another day.', 'info');
 		}
 	});
 
-	var divRequest = $(".div-request").text();
+	$('#discount, #paid').on('input change', recalcOrder);
+	$('#orderForm').on('submit', submitOrderForm);
 
-	// top nav bar 
-	$("#navOrder").addClass('active');
-
-	if(divRequest == 'add')  {
-		// add order	
-		// top nav child bar 
-		$('#topNavAddOrder').addClass('active');	
-
-		// order date picker
-		$("#orderDate").datepicker();
-		$("#expectReturnDate").datepicker();
-
-		// create order form function
-		$("#createOrderForm").unbind('submit').bind('submit', function() {
-			var form = $(this);
-
-			$('.form-group').removeClass('has-error').removeClass('has-success');
-			$('.text-danger').remove();
-				
-			var orderDate = $("#orderDate").val();
-			var expectReturnDate = $("#expectReturnDate").val();
-			var siteLocation = $("#siteLocation").val();
-			var clientName = $("#clientName").val();
-			var clientContact = $("#clientContact").val();
-			var driverName = $("#driverName").val();
-			var driverContact = $("#driverContact").val();
-			var paid = $("#paid").val();
-			var discount = $("#discount").val();
-			var paymentType = $("#paymentType").val();
-			var paymentStatus = $("#paymentStatus").val();
-			var paymentPlace = $("#paymentPlace").val();
-			var orderStatus = $("#orderStatus").val();
-			var gstn = $("#gstn").val();
-
-			// form validation 
-			if(orderDate == "") {
-				$("#orderDate").after('<p class="text-danger"> The Order Date field is required </p>');
-				$('#orderDate').closest('.form-group').addClass('has-error');
-			} else {
-				$('#orderDate').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(expectReturnDate == "") {
-				$("#expectReturnDate").after('<p class="text-danger"> The Expected Return Date field is required </p>');
-				$('#expectReturnDate').closest('.form-group').addClass('has-error');
-			} else {
-				$('#expectReturnDate').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(siteLocation == "") {
-				$("#siteLocation").after('<p class="text-danger"> The Site Location field is required </p>');
-				$('#siteLocation').closest('.form-group').addClass('has-error');
-			} else {
-				$('#siteLocation').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(clientName == "") {
-				$("#clientName").after('<p class="text-danger"> The Client Name field is required </p>');
-				$('#clientName').closest('.form-group').addClass('has-error');
-			} else {
-				$('#clientName').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(clientContact == "") {
-				$("#clientContact").after('<p class="text-danger"> The Client Contact field is required </p>');
-				$('#clientContact').closest('.form-group').addClass('has-error');
-			} else {
-				$('#clientContact').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(driverName == "") {
-				$("#driverName").after('<p class="text-danger"> The Driver Name field is required </p>');
-				$('#driverName').closest('.form-group').addClass('has-error');
-			} else {
-				$('#driverName').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(driverContact == "") {
-				$("#driverContact").after('<p class="text-danger"> The Driver Contact field is required </p>');
-				$('#driverContact').closest('.form-group').addClass('has-error');
-			} else {
-				$('#driverContact').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paid == "") {
-				$("#paid").after('<p class="text-danger"> The Paid field is required </p>');
-				$('#paid').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paid').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(discount == "") {
-				$("#discount").after('<p class="text-danger"> The Discount field is required </p>');
-				$('#discount').closest('.form-group').addClass('has-error');
-			} else {
-				$('#discount').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paymentType == "") {
-				$("#paymentType").after('<p class="text-danger"> The Payment Type field is required </p>');
-				$('#paymentType').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paymentType').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paymentStatus == "") {
-				$("#paymentStatus").after('<p class="text-danger"> The Payment Status field is required </p>');
-				$('#paymentStatus').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paymentStatus').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paymentPlace == "") {
-				$("#paymentPlace").after('<p class="text-danger"> The Payment Place field is required </p>');
-				$('#paymentPlace').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paymentPlace').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(orderStatus == "") {
-				$("#orderStatus").after('<p class="text-danger"> The Order Status field is required </p>');
-				$('#orderStatus').closest('.form-group').addClass('has-error');
-			} else {
-				$('#orderStatus').closest('.form-group').addClass('has-success');
-			} // /else
-
-			// GSTN is now optional - removed validation
-
-			// array validation
-			var productName = document.getElementsByName('productName[]');				
-			var validateProduct;
-			for (var x = 0; x < productName.length; x++) {       			
-				var productNameId = productName[x].id;	    	
-				if(productName[x].value == ''){	    		    	
-					$("#"+productNameId+"").after('<p class="text-danger"> Product Name Field is required!! </p>');
-					$("#"+productNameId+"").closest('.form-group').addClass('has-error');	    		    	    	
-				} else {      	
-					$("#"+productNameId+"").closest('.form-group').addClass('has-success');	    		    		    	
-				}          
-			} // for
-
-			for (var x = 0; x < productName.length; x++) {       						
-				if(productName[x].value){	    		    		    	
-					validateProduct = true;
-				} else {      	
-					validateProduct = false;
-				}          
-			} // for       		   	
-			
-			var quantity = document.getElementsByName('quantity[]');		   	
-			var validateQuantity;
-			for (var x = 0; x < quantity.length; x++) {       
-				var quantityId = quantity[x].id;
-				if(quantity[x].value == ''){	    	
-					$("#"+quantityId+"").after('<p class="text-danger"> Quantity Field is required!! </p>');
-					$("#"+quantityId+"").closest('.form-group').addClass('has-error');	    		    		    	
-				} else {      	
-					$("#"+quantityId+"").closest('.form-group').addClass('has-success');	    		    		    		    	
-				} 
-			}  // for
-
-			for (var x = 0; x < quantity.length; x++) {       						
-				if(quantity[x].value){	    		    		    	
-					validateQuantity = true;
-				} else {      	
-					validateQuantity = false;
-				}          
-			} // for       	
-			
-
-			if(orderDate && expectReturnDate && siteLocation && clientName && clientContact && 
-			   driverName && driverContact && paid !== "" && discount !== "" && paymentType && paymentStatus && 
-			   paymentPlace && orderStatus) {
-				if(validateProduct == true && validateQuantity == true) {
-					// Prevent double submission
-					var $submitBtn = $("#createOrderBtn");
-					if($submitBtn.prop('disabled')) {
-						return false; // Already submitting
-					}
-					
-					// Disable submit button and show loading
-					$submitBtn.prop('disabled', true).button('loading');
-					
-					// Clear any previous messages
-					$(".text-danger").remove();
-					$('.form-group').removeClass('has-error').removeClass('has-success');
-
-					// Debug: Log form data
-					console.log("Submitting order form...");
-					console.log("Form data:", form.serialize());
-
-					$.ajax({
-						url : form.attr('action'),
-						type: form.attr('method'),
-						data: form.serialize(),					
-						dataType: 'json',
-						success:function(response) {
-							console.log("Order creation response:", response);
-							console.log(response);
-							
-							// Reset button
-							$submitBtn.prop('disabled', false).button('reset');
-
-							if(response.success == true) {
-								// Show success toast notification immediately
-								showToast(response.messages, 'success', 6000);
-								
-								// Also show in success messages area
-								$(".success-messages").html('<div class="alert alert-success">'+
-	            	'<button type="button" class="close" data-dismiss="alert">&times;</button>'+
-	            	'<strong><i class="glyphicon glyphicon-ok-sign"></i></strong> '+ response.messages +
-	            	' <br /> <br /> <a type="button" onclick="printOrder('+response.order_id+')" class="btn btn-primary"> <i class="glyphicon glyphicon-print"></i> Print </a>'+
-	            	'<a href="orders.php?o=add" class="btn btn-default" style="margin-left:10px;"> <i class="glyphicon glyphicon-plus-sign"></i> Add New Order </a>'+
-	            	
-	   		       '</div>');
-								
-								$("html, body, div.panel, div.pane-body").animate({scrollTop: '0px'}, 100);
-
-								// Disable the submit button footer
-								$(".submitButtonFooter").addClass('div-hide');
-								// Remove the product row buttons
-								$(".removeProductRowBtn").addClass('div-hide');
-								
-							} else {
-								// Show error toast
-								var errorMsg = response.messages || 'Error creating order. Please try again.';
-								
-								// Include debug info if available
-								if(response.debug && Object.keys(response.debug).length > 0) {
-									console.error("Debug info:", response.debug);
-									errorMsg += " (Check console for details)";
-								}
-								
-								showToast(errorMsg, 'error', 8000);
-								
-								// Show detailed error in alert for debugging
-								if(response.debug) {
-									alert(errorMsg + "\n\nDebug Info:\n" + JSON.stringify(response.debug, null, 2));
-								} else {
-									alert(errorMsg);
-								}
-							}
-						}, // /response
-						error: function(xhr, status, error) {
-							// Reset button on error
-							$submitBtn.prop('disabled', false).button('reset');
-							
-							// Show error toast
-							var errorMsg = 'Network error. Please check your connection and try again.';
-							try {
-								var response = JSON.parse(xhr.responseText);
-								if(response.messages) {
-									errorMsg = response.messages;
-								}
-							} catch(e) {
-								if(xhr.responseText) {
-									errorMsg = xhr.responseText.substring(0, 200);
-								}
-							}
-							
-							// Log full error for debugging
-							console.error('Order creation error:', {
-								status: status,
-								error: error,
-								responseText: xhr.responseText,
-								statusCode: xhr.status,
-								readyState: xhr.readyState
-							});
-							
-							showToast(errorMsg, 'error', 5000);
-						}
-					}); // /ajax
-				} // if array validate is true
-			} // /if field validate is true
-			
-
-			return false;
-		}); // /create order form function	
-	
-	} else if(divRequest == 'manord') {
-		// top nav child bar 
-		$('#topNavManageOrder').addClass('active');
-
-		manageOrderTable = $("#manageOrderTable").DataTable({
-			'ajax': 'php_action/fetchOrder.php',
-			'order': [],
-			'pageLength': 10,
-			'lengthMenu': [[10, 25, 50, -1], [10, 25, 50, "All"]]
-		});		
-					
-	} else if(divRequest == 'editOrd') {
-		$("#orderDate").datepicker();
-		$("#expectReturnDate").datepicker();
-		$("#returnedDate").datepicker();
-
-		// edit order form function
-		$("#editOrderForm").unbind('submit').bind('submit', function() {
-			var form = $(this);
-
-			$('.form-group').removeClass('has-error').removeClass('has-success');
-			$('.text-danger').remove();
-				
-			var orderDate = $("#orderDate").val();
-			var expectReturnDate = $("#expectReturnDate").val();
-			var returnedDate = $("#returnedDate").val();
-			var siteLocation = $("#siteLocation").val();
-			var clientName = $("#clientName").val();
-			var clientContact = $("#clientContact").val();
-			var driverName = $("#driverName").val();
-			var driverContact = $("#driverContact").val();
-			var returnedBy = $("#returnedBy").val();
-			var returnedByContact = $("#returnedByContact").val();
-			var approvedBy = $("#approvedBy").val();
-			var paid = $("#paid").val();
-			var discount = $("#discount").val();
-			var paymentType = $("#paymentType").val();
-			var paymentStatus = $("#paymentStatus").val();
-			var paymentPlace = $("#paymentPlace").val();
-			var orderStatus = $("#orderStatus").val();
-			var gstn = $("#gstn").val();
-
-			// form validation 
-			if(orderDate == "") {
-				$("#orderDate").after('<p class="text-danger"> The Order Date field is required </p>');
-				$('#orderDate').closest('.form-group').addClass('has-error');
-			} else {
-				$('#orderDate').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(expectReturnDate == "") {
-				$("#expectReturnDate").after('<p class="text-danger"> The Expected Return Date field is required </p>');
-				$('#expectReturnDate').closest('.form-group').addClass('has-error');
-			} else {
-				$('#expectReturnDate').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(siteLocation == "") {
-				$("#siteLocation").after('<p class="text-danger"> The Site Location field is required </p>');
-				$('#siteLocation').closest('.form-group').addClass('has-error');
-			} else {
-				$('#siteLocation').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(clientName == "") {
-				$("#clientName").after('<p class="text-danger"> The Client Name field is required </p>');
-				$('#clientName').closest('.form-group').addClass('has-error');
-			} else {
-				$('#clientName').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(clientContact == "") {
-				$("#clientContact").after('<p class="text-danger"> The Client Contact field is required </p>');
-				$('#clientContact').closest('.form-group').addClass('has-error');
-			} else {
-				$('#clientContact').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(driverName == "") {
-				$("#driverName").after('<p class="text-danger"> The Driver Name field is required </p>');
-				$('#driverName').closest('.form-group').addClass('has-error');
-			} else {
-				$('#driverName').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(driverContact == "") {
-				$("#driverContact").after('<p class="text-danger"> The Driver Contact field is required </p>');
-				$('#driverContact').closest('.form-group').addClass('has-error');
-			} else {
-				$('#driverContact').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paid == "") {
-				$("#paid").after('<p class="text-danger"> The Paid field is required </p>');
-				$('#paid').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paid').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(discount == "") {
-				$("#discount").after('<p class="text-danger"> The Discount field is required </p>');
-				$('#discount').closest('.form-group').addClass('has-error');
-			} else {
-				$('#discount').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paymentType == "") {
-				$("#paymentType").after('<p class="text-danger"> The Payment Type field is required </p>');
-				$('#paymentType').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paymentType').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paymentStatus == "") {
-				$("#paymentStatus").after('<p class="text-danger"> The Payment Status field is required </p>');
-				$('#paymentStatus').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paymentStatus').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(paymentPlace == "") {
-				$("#paymentPlace").after('<p class="text-danger"> The Payment Place field is required </p>');
-				$('#paymentPlace').closest('.form-group').addClass('has-error');
-			} else {
-				$('#paymentPlace').closest('.form-group').addClass('has-success');
-			} // /else
-
-			if(orderStatus == "") {
-				$("#orderStatus").after('<p class="text-danger"> The Order Status field is required </p>');
-				$('#orderStatus').closest('.form-group').addClass('has-error');
-			} else {
-				$('#orderStatus').closest('.form-group').addClass('has-success');
-			} // /else
-
-			// GSTN is now optional - removed validation
-
-			// array validation
-			var productName = document.getElementsByName('productName[]');				
-			var validateProduct;
-			for (var x = 0; x < productName.length; x++) {       			
-				var productNameId = productName[x].id;	    	
-				if(productName[x].value == ''){	    		    	
-					$("#"+productNameId+"").after('<p class="text-danger"> Product Name Field is required!! </p>');
-					$("#"+productNameId+"").closest('.form-group').addClass('has-error');	    		    	    	
-				} else {      	
-					$("#"+productNameId+"").closest('.form-group').addClass('has-success');	    		    		    	
-				}          
-			} // for
-
-			for (var x = 0; x < productName.length; x++) {       						
-				if(productName[x].value){	    		    		    	
-					validateProduct = true;
-				} else {      	
-					validateProduct = false;
-				}          
-			} // for       		   	
-			
-			var quantity = document.getElementsByName('quantity[]');		   	
-			var validateQuantity;
-			for (var x = 0; x < quantity.length; x++) {       
-				var quantityId = quantity[x].id;
-				if(quantity[x].value == ''){	    	
-					$("#"+quantityId+"").after('<p class="text-danger"> Quantity Field is required!! </p>');
-					$("#"+quantityId+"").closest('.form-group').addClass('has-error');	    		    		    	
-				} else {      	
-					$("#"+quantityId+"").closest('.form-group').addClass('has-success');	    		    		    		    	
-				} 
-			}  // for
-
-			for (var x = 0; x < quantity.length; x++) {       						
-				if(quantity[x].value){	    		    		    	
-					validateQuantity = true;
-				} else {      	
-					validateQuantity = false;
-				}          
-			} // for       	
-			
-
-			if(orderDate && expectReturnDate && siteLocation && clientName && clientContact && 
-			   driverName && driverContact && paid !== "" && discount !== "" && paymentType && paymentStatus && 
-			   paymentPlace && orderStatus) {
-				if(validateProduct == true && validateQuantity == true) {
-					// edit order button
-					// $("#editOrderBtn").button('loading');
-
-					$.ajax({
-						url : form.attr('action'),
-						type: form.attr('method'),
-						data: form.serialize(),					
-						dataType: 'json',
-						success:function(response) {
-							console.log(response);
-							// reset button
-							$("#editOrderBtn").button('reset');
-							
-							$(".text-danger").remove();
-							$('.form-group').removeClass('has-error').removeClass('has-success');
-
-							if(response.success == true) {
-								
-								// success message
-								$(".success-messages").html('<div class="alert alert-success">'+
-	            	'<button type="button" class="close" data-dismiss="alert">&times;</button>'+
-	            	'<strong><i class="glyphicon glyphicon-ok-sign"></i></strong> '+ response.messages +	            		            		            	
-	   		       '</div>');
-								
-								$("html, body, div.panel, div.pane-body").animate({scrollTop: '0px'}, 100);
-
-								// disabled te modal footer button
-								$(".editButtonFooter").addClass('div-hide');
-								// remove the product row
-								$(".removeProductRowBtn").addClass('div-hide');
-								
-							} else {
-								alert(response.messages);								
-							}
-						} // /response
-					}); // /ajax
-				} // if array validate is true
-			} // /if field validate is true
-			
-
-			return false;
-		}); // /edit order form function	
-	} 	
-
-}); // /document
-
-// Calculate total based on daily rate and rental days
-function calculateRentalTotal(row = null) {
-    if(row) {
-        var dailyRate = $("#dailyRate"+row).val();
-        var rentalDays = $("#rentalDays"+row).val();
-        var quantity = $("#quantity"+row).val();
-        
-        if(dailyRate && rentalDays && quantity) {
-            var total = Number(dailyRate) * Number(rentalDays) * Number(quantity);
-            total = total.toFixed(2);
-            $("#total"+row).val(total);
-            $("#totalValue"+row).val(total);
-            
-            subAmount();
-        }
-    }
+	recalcOrder();
 }
 
-// print order function
-function printOrder(orderId = null) {
-	if(orderId) {		
-			
-		$.ajax({
-			url: 'php_action/printOrder.php',
-			type: 'post',
-			data: {orderId: orderId},
-			dataType: 'text',
-			success:function(response) {
-				
-				var mywindow = window.open('', 'Stock Management System', 'height=400,width=600');
-        mywindow.document.write('<html><head><title>Order Invoice</title>');        
-        mywindow.document.write('</head><body>');
-        mywindow.document.write(response);
-        mywindow.document.write('</body></html>');
+function scheduledDays() {
+	return hireDays(parseDMY($('#orderDate').val()), parseDMY($('#expectReturnDate').val()));
+}
 
-        mywindow.document.close(); // necessary for IE >= 10
-        mywindow.focus(); // necessary for IE >= 10
-        mywindow.resizeTo(screen.width, screen.height);
-				setTimeout(function() {
-					mywindow.print();
-					mywindow.close();
-				}, 1250);
-				
-			}// /success function
-		}); // /ajax function to fetch the printable order
-	} // /if orderId
-} // /print order function
+function productOptions(selectedId) {
+	var html = '<option value="">— Select product —</option>';
+	$.each(orderForm.productList, function(i, p) {
+		var label = p.name + ' (' + p.available + ' available)';
+		html += '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+	});
+	return html;
+}
 
-function addRow() {
-	$("#addRowBtn").button("loading");
+function addRow(item, manualDays) {
+	var days = item ? item.rental_days : scheduledDays();
+	var $tr = $('<tr>' +
+		'<td data-label="Product"><div class="form-group" style="margin:0;"><select class="form-control product-select" name="productName[]" aria-label="Product">' + productOptions(item ? item.product_id : null) + '</select></div></td>' +
+		'<td data-label="Daily rate (KSh)" class="text-right rate-cell">—</td>' +
+		'<td data-label="Quantity"><div class="form-group" style="margin:0;"><input type="number" class="form-control quantity" name="quantity[]" min="1" step="1" aria-label="Quantity" value="' + (item ? item.quantity : 1) + '"></div></td>' +
+		'<td data-label="Rental days"><div class="form-group" style="margin:0;"><input type="number" class="form-control rental-days" name="rentalDays[]" min="1" step="1" aria-label="Rental days" value="' + days + '"></div></td>' +
+		'<td data-label="Available" class="text-right available">—</td>' +
+		'<td data-label="Line total (KSh)" class="text-right line-total">0.00</td>' +
+		'<td><button type="button" class="btn btn-default btn-sm remove-row" title="Remove this product" aria-label="Remove this product"><i class="glyphicon glyphicon-trash"></i></button></td>' +
+		'</tr>');
+	$tr.data('manualDays', !!manualDays);
 
-	var tableLength = $("#productTable tbody tr").length;
+	$tr.find('.product-select').on('change', function() { recalcOrder(); });
+	$tr.find('.quantity').on('input change', recalcOrder);
+	$tr.find('.rental-days').on('input change', function() {
+		$tr.data('manualDays', true);
+		recalcOrder();
+	});
+	$tr.find('.remove-row').on('click', function() {
+		if($('#productTable tbody tr').length === 1) {
+			$tr.find('.product-select').val('');
+			$tr.find('.quantity').val(1);
+		} else {
+			$tr.remove();
+		}
+		recalcOrder();
+	});
 
-	var tableRow;
-	var arrayNumber;
-	var count;
+	$('#productTable tbody').append($tr);
+	recalcOrder();
+}
 
-	if(tableLength > 0) {		
-		tableRow = $("#productTable tbody tr:last").attr('id');
-		arrayNumber = $("#productTable tbody tr:last").attr('class');
-		count = tableRow.substring(3);	
-		count = Number(count) + 1;
-		arrayNumber = Number(arrayNumber) + 1;					
-	} else {
-		// no table row
-		count = 1;
-		arrayNumber = 0;
+function rowRate(productId) {
+	if(orderForm.originalRates[productId] !== undefined) { return Number(orderForm.originalRates[productId]); }
+	var p = orderForm.products[productId];
+	return p ? Number(p.rate) : 0;
+}
+
+// Recalculates the preview totals (same rules as php_action/order_service.php).
+function recalcOrder() {
+	var sub = 0;
+	var lines = [];
+	$('#productTable tbody tr').each(function() {
+		var $tr = $(this);
+		var pid = Number($tr.find('.product-select').val()) || 0;
+		var p = orderForm.products[pid];
+		var qty = Math.max(0, parseInt($tr.find('.quantity').val(), 10) || 0);
+		var days = Math.max(0, parseInt($tr.find('.rental-days').val(), 10) || 0);
+		var rate = pid ? rowRate(pid) : 0;
+		var line = Math.round(rate * days * qty * 100) / 100;
+
+		$tr.find('.rate-cell').text(pid ? formatMoney(rate) : '—');
+		$tr.find('.available').text(p ? p.available : '—');
+		$tr.find('.quantity').attr('max', p ? p.available : null);
+		$tr.find('.line-total').text(formatMoney(line));
+		sub += line;
+		if(pid) { lines.push({ rate: rate, qty: qty, days: days }); }
+	});
+
+	var vat = Math.round(sub * orderForm.vatRate) / 100;
+	var lateFee = 0;
+	var orderDate = parseDMY($('#orderDate').val());
+	var returned = parseDMY($('#returnedDate').val());
+	if(orderForm.isEdit && orderDate && returned) {
+		var actual = hireDays(orderDate, returned);
+		$.each(lines, function(i, l) {
+			if(actual > l.days) { lateFee += (actual - l.days) * l.rate * l.qty; }
+		});
 	}
+	var discount = Math.max(0, Number($('#discount').val()) || 0);
+	var grand = sub + vat + lateFee - discount;
+	var paid = orderForm.isEdit ? orderForm.alreadyPaid : Math.max(0, Number($('#paid').val()) || 0);
+
+	$('#subTotal').val(formatMoney(sub));
+	$('#vat').val(formatMoney(vat));
+	$('#lateFee').val(formatMoney(lateFee));
+	$('#grandTotal').val(formatMoney(grand));
+	$('#due').val(formatMoney(grand - paid));
+
+	var days = scheduledDays();
+	$('#hirePeriodHint').text(parseDMY($('#expectReturnDate').val()) ? days + ' day' + (days === 1 ? '' : 's') + ' hire (both dates included)' : '');
+
+	return { grand: grand, paid: paid, discount: discount, sub: sub + vat + lateFee };
+}
+
+var KE_PHONE = /^(?:\+?254|0)?[17]\d{8}$/;
+
+function validPhone(value) {
+	return KE_PHONE.test(String(value).replace(/[\s\-().]/g, ''));
+}
+
+function validateOrderForm() {
+	var $form = $('#orderForm');
+	clearFieldErrors($form);
+	var ok = true;
+	function fail($field, message) { fieldError($field, message); ok = false; }
+
+	var orderDate = parseDMY($('#orderDate').val());
+	var expected = parseDMY($('#expectReturnDate').val());
+	if(!orderDate) { fail($('#orderDate'), 'Enter the order date as dd/mm/yyyy.'); }
+	if(!expected) { fail($('#expectReturnDate'), 'Enter the expected return date as dd/mm/yyyy.'); }
+	else if(orderDate && expected < orderDate) { fail($('#expectReturnDate'), 'Cannot be before the order date.'); }
+
+	if(!$('#branch').val()) { fail($('#branch'), 'Select a branch.'); }
+	$.each(['#siteLocation', '#clientName', '#driverName'], function(i, sel) {
+		if($.trim($(sel).val()) === '') { fail($(sel), 'This field is required.'); }
+	});
+	$.each(['#clientContact', '#driverContact'], function(i, sel) {
+		if(!validPhone($(sel).val())) { fail($(sel), 'Enter a Kenyan phone number, e.g. 0712 345 678.'); }
+	});
+	var returnedBy = $('#returnedByContact');
+	if(returnedBy.length && $.trim(returnedBy.val()) !== '' && !validPhone(returnedBy.val())) {
+		fail(returnedBy, 'Enter a Kenyan phone number, e.g. 0712 345 678.');
+	}
+	var pin = $.trim($('#clientKraPin').val()).toUpperCase();
+	if(pin !== '' && !/^[AP]\d{9}[A-Z]$/.test(pin)) { fail($('#clientKraPin'), 'Format: P051234567X'); }
+
+	if($('#returnedDate').length && $.trim($('#returnedDate').val()) !== '') {
+		var returned = parseDMY($('#returnedDate').val());
+		if(!returned) { fail($('#returnedDate'), 'Enter the date as dd/mm/yyyy.'); }
+		else if(orderDate && returned < orderDate) { fail($('#returnedDate'), 'Cannot be before the order date.'); }
+	}
+
+	// Equipment rows
+	var stillOut = !$('#returnedDate').length || $.trim($('#returnedDate').val()) === '';
+	var cancelled = $('#orderStatus').val() === '2';
+	var seen = {};
+	var productCount = 0;
+	$('#productTable tbody tr').each(function() {
+		var $tr = $(this);
+		var $select = $tr.find('.product-select');
+		var pid = Number($select.val()) || 0;
+		var qty = parseInt($tr.find('.quantity').val(), 10) || 0;
+		var days = parseInt($tr.find('.rental-days').val(), 10) || 0;
+		if(!pid) { fail($select, 'Select a product or remove this row.'); return; }
+		productCount++;
+		if(seen[pid]) { fail($select, 'Already listed above — combine the quantities.'); }
+		seen[pid] = true;
+		if(qty < 1) { fail($tr.find('.quantity'), 'At least 1.'); }
+		else if(stillOut && !cancelled && orderForm.products[pid] && qty > orderForm.products[pid].available) {
+			fail($tr.find('.quantity'), 'Only ' + orderForm.products[pid].available + ' available.');
+		}
+		if(days < 1) { fail($tr.find('.rental-days'), 'At least 1.'); }
+	});
+	if(productCount === 0 && ok) {
+		fail($('#productTable tbody tr:first .product-select'), 'Add at least one product.');
+	}
+
+	var totals = recalcOrder();
+	if($('#discount').val() !== '' && (isNaN(Number($('#discount').val())) || Number($('#discount').val()) < 0)) {
+		fail($('#discount'), 'Enter 0 or more.');
+	} else if(totals.discount > totals.sub + 0.001) {
+		fail($('#discount'), 'Cannot be more than the order total.');
+	}
+	if(!orderForm.isEdit) {
+		var paid = Number($('#paid').val());
+		if(isNaN(paid) || paid < 0) { fail($('#paid'), 'Enter 0 or more.'); }
+		else if(paid > totals.grand + 0.001) { fail($('#paid'), 'Cannot be more than the grand total.'); }
+		else if(paid > 0 && !$('#paymentType').val()) { fail($('#paymentType'), 'Select how the client paid.'); }
+	}
+	return ok;
+}
+
+function submitOrderForm(e) {
+	e.preventDefault();
+	var $form = $(this);
+	var $btn = $('#saveOrderBtn');
+	if($btn.prop('disabled')) { return false; }
+	$('.order-messages').empty();
+
+	if(!validateOrderForm()) {
+		showToast('Please correct the highlighted fields.', 'warning');
+		var $first = $form.find('.has-error:first');
+		if($first.length) { $('html, body').animate({ scrollTop: $first.offset().top - 90 }, 200); }
+		return false;
+	}
+
+	$btn.button('loading');
+	$.ajax({
+		url: $form.attr('action'),
+		type: 'POST',
+		data: $form.serialize(),
+		dataType: 'json',
+		success: function(response) {
+			if(response.success) {
+				// The next page shows the confirmation message.
+				window.location.href = 'orders.php?o=editOrd&i=' + response.order_id;
+				return;
+			}
+			$btn.button('reset');
+			showAlert('.order-messages', 'error', response.messages);
+			showToast(response.messages, 'error');
+			$('html, body').animate({ scrollTop: 0 }, 200);
+		}
+	});
+	return false;
+}
+
+// ─────────────────────────────────────────────────────────
+// Manage orders
+// ─────────────────────────────────────────────────────────
+
+function initManageOrders() {
+	var url = function() { return 'php_action/fetchOrder.php?status=' + encodeURIComponent($('#orderStatusFilter').val()); };
+	var sortable = function(key) { return { data: { _: key + '.display', sort: key + '.sort' } }; };
+
+	manageOrderTable = $('#manageOrderTable').DataTable({
+		ajax: url(),
+		order: [],
+		pageLength: 25,
+		lengthMenu: [[10, 25, 50, -1], [10, 25, 50, 'All']],
+		columns: [
+			sortable('id'),
+			sortable('date'),
+			{ data: 'client' },
+			{ data: 'site' },
+			sortable('expected'),
+			sortable('returned'),
+			$.extend(sortable('total'), { className: 'text-right text-nowrap' }),
+			$.extend(sortable('paid'), { className: 'text-right text-nowrap' }),
+			$.extend(sortable('due'), { className: 'text-right text-nowrap' }),
+			{ data: 'payment' },
+			{ data: 'status' },
+			{ data: 'action', orderable: false, searchable: false }
+		]
+	});
+
+	$('#orderStatusFilter').on('change', function() {
+		manageOrderTable.ajax.url(url()).load();
+	});
+}
+
+function reloadOrders() {
+	if(manageOrderTable) {
+		manageOrderTable.ajax.reload(null, false);
+	} else {
+		window.location.reload();
+	}
+}
+
+// ─────────────────────────────────────────────────────────
+// Print, cancel, payments
+// ─────────────────────────────────────────────────────────
+
+function printOrder(orderId) {
+	var win = window.open('php_action/printOrder.php?id=' + encodeURIComponent(orderId), '_blank');
+	if(!win) {
+		showToast('Your browser blocked the invoice window. Allow pop-ups for this site and try again.', 'warning');
+	}
+}
+
+function removeOrder(orderId) {
+	$('.removeOrderMessages').empty();
+	$('#removeOrderTitle').text('#' + orderId);
+	$('#removeOrderModal').modal('show');
+
+	$('#removeOrderBtn').off('click').on('click', function() {
+		var $btn = $(this).button('loading');
+		$.ajax({
+			url: 'php_action/removeOrder.php',
+			type: 'post',
+			data: { orderId: orderId },
+			dataType: 'json',
+			success: function(response) {
+				$btn.button('reset');
+				if(response.success) {
+					$('#removeOrderModal').modal('hide');
+					showToast(response.messages, 'success');
+					reloadOrders();
+				} else {
+					showAlert('.removeOrderMessages', 'error', response.messages);
+				}
+			}
+		});
+	});
+}
+
+var paymentOrderId = null;
+
+function paymentOrder(orderId) {
+	paymentOrderId = orderId;
+	var $modal = $('#paymentOrderModal');
+	$('.paymentOrderMessages, #paymentHistory').empty();
+	clearFieldErrors($modal);
+	$('#paymentForm')[0].reset();
+	$('#paymentOrderTitle').text('Order #' + orderId);
+	$('#payGrandTotal, #payPaid, #payDue').text('…');
+	$('#paymentForm, #updatePaymentOrderBtn').hide();
+	$('#paymentFullyPaid').hide();
+	$modal.modal('show');
 
 	$.ajax({
-		url: 'php_action/fetchProductData.php',
+		url: 'php_action/fetchOrderPaymentData.php',
 		type: 'post',
+		data: { orderId: orderId },
 		dataType: 'json',
-		success:function(response) {
-			$("#addRowBtn").button("reset");			
+		success: function(response) {
+			if(!response.success) {
+				showAlert('.paymentOrderMessages', 'error', response.messages);
+				return;
+			}
+			var order = response.order;
+			$('#paymentOrderTitle').text('Order #' + order.order_id + ' · ' + order.client_name);
+			$('#payGrandTotal').text('KSh ' + formatMoney(order.grand_total));
+			$('#payPaid').text('KSh ' + formatMoney(order.paid));
+			$('#payDue').text('KSh ' + formatMoney(order.due));
 
-			var tr = '<tr id="row'+count+'" class="'+arrayNumber+'">'+			  				
-			'<td>'+
-				'<div class="form-group">'+
-				'<select class="form-control" name="productName[]" id="productName'+count+'" onchange="getProductData('+count+')" >'+
-					'<option value="">~~SELECT~~</option>';
-					$.each(response, function(index, value) {
-						tr += '<option value="'+value[0]+'">'+value[1]+'</option>';							
-					});					
-				tr += '</select>'+
-				'</div>'+
-			'</td>'+
-			'<td style="padding-left:20px;">'+
-				'<input type="text" name="dailyRate[]" id="dailyRate'+count+'" autocomplete="off" disabled="true" class="form-control" />'+
-				'<input type="hidden" name="dailyRateValue[]" id="dailyRateValue'+count+'" autocomplete="off" class="form-control" />'+
-			'</td>'+
-			'<td style="padding-left:20px;">'+
-				'<div class="form-group" style="margin:0">'+
-				'<input type="number" name="rentalDays[]" id="rentalDays'+count+'" onkeyup="calculateRentalTotal('+count+')" autocomplete="off" class="form-control" min="1" value="1" />'+
-				'</div>'+
-			'</td>'+
-			'<td style="padding-left:20px;">'+
-				'<div class="form-group" style="margin:0">'+
-				'<p id="available_quantity'+count+'"></p>'+
-				'</div>'+
-			'</td>'+
-			'<td style="padding-left:20px;">'+
-				'<div class="form-group" style="margin:0">'+
-				'<input type="number" name="quantity[]" id="quantity'+count+'" onkeyup="calculateRentalTotal('+count+')" autocomplete="off" class="form-control" min="1" value="1" />'+
-				'</div>'+
-			'</td>'+
-			'<td style="padding-left:20px;">'+
-				'<input type="text" name="total[]" id="total'+count+'" autocomplete="off" class="form-control" disabled="true" />'+
-				'<input type="hidden" name="totalValue[]" id="totalValue'+count+'" autocomplete="off" class="form-control" />'+
-			'</td>'+
-			'<td>'+
-				'<button class="btn btn-default removeProductRowBtn" type="button" onclick="removeProductRow('+count+')"><i class="glyphicon glyphicon-trash"></i></button>'+
-			'</td>'+
-		'</tr>';
-			if(tableLength > 0) {							
-				$("#productTable tbody tr:last").after(tr);
-			} else {				
-				$("#productTable tbody").append(tr);
-			}		
+			if(response.history.length) {
+				var rows = '';
+				$.each(response.history, function(i, p) {
+					rows += '<tr><td>' + escapeHtml(p.date) + '</td><td>' + escapeHtml(p.method) + '</td><td>' + escapeHtml(p.reference) +
+						'</td><td class="text-right">' + escapeHtml(p.amount) + '</td><td>' + escapeHtml(p.received_by) + '</td></tr>';
+				});
+				$('#paymentHistory').html('<h4 class="form-section-title">Payment history</h4><div class="table-responsive"><table class="table table-condensed">' +
+					'<thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="text-right">KSh</th><th>By</th></tr></thead><tbody>' + rows + '</tbody></table></div>');
+			} else if(order.paid > 0) {
+				$('#paymentHistory').html('<p class="text-muted small">KSh ' + formatMoney(order.paid) + ' was paid before payment history was kept.</p>');
+			}
 
-		} // /success
-	});	// get the product data
-
-} // /add row
-
-function removeProductRow(row = null) {
-	if(row) {
-		$("#row"+row).remove();
-		subAmount();
-	} else {
-		alert('error! Refresh the page again');
-	}
+			if(order.due > 0 && order.order_status !== 2) {
+				$('#payAmount').val(order.due.toFixed(2)).attr('max', order.due.toFixed(2)).data('due', order.due);
+				if(order.payment_type) { $('#payPaymentType').val(order.payment_type); }
+				$('#paymentForm, #updatePaymentOrderBtn').show();
+			} else if(order.order_status !== 2) {
+				$('#paymentFullyPaid').show();
+			}
+		}
+	});
 }
 
-// select on product data - FIXED VERSION
-function getProductData(row = null) {
-    if(row) {
-        var productId = $("#productName"+row).val();        
-        
-        if(productId == "") {
-            $("#dailyRate"+row).val("");
-            $("#rentalDays"+row).val(1);
-            $("#quantity"+row).val("");                        
-            $("#total"+row).val("");
-        } else {
-            console.log("Fetching product data for ID:", productId); // Debug
-            
-            $.ajax({
-                url: 'php_action/fetchSelectedProduct.php',
-                type: 'post',
-                data: {productId : productId},
-                dataType: 'json',
-                success:function(response) {
-                    console.log("Product Data Response:", response); // Debug
-                    
-                    // Check if we have daily_rate
-                    var dailyRate = response.daily_rate || 0;
-                    if(dailyRate == 0) {
-                        console.warn("No daily_rate found for product:", response.product_name);
-                        dailyRate = response.rate || 0; // Fallback to purchase rate
-                    }
-                    
-                    console.log("Setting daily rate to:", dailyRate);
-                    
-                    // setting the daily rate value
-                    $("#dailyRate"+row).val(dailyRate);
-                    $("#dailyRateValue"+row).val(dailyRate);
-                    
-                    // set rental days to 1 by default
-                    var currentRentalDays = $("#rentalDays"+row).val();
-                    if(!currentRentalDays || currentRentalDays < 1) {
-                        $("#rentalDays"+row).val(1);
-                    }
-                    
-                    // set quantity to 1 by default
-                    var currentQuantity = $("#quantity"+row).val();
-                    if(!currentQuantity || currentQuantity < 1) {
-                        $("#quantity"+row).val(1);
-                    }
-                    
-                    // show available quantity
-                    $("#available_quantity"+row).text(response.quantity || 0);
-                    
-                    // calculate initial total
-                    var rentalDays = parseFloat($("#rentalDays"+row).val()) || 1;
-                    var quantity = parseFloat($("#quantity"+row).val()) || 1;
-                    var total = dailyRate * rentalDays * quantity;
-                    total = total.toFixed(2);
-                    
-                    console.log("Calculating total:", dailyRate, "×", rentalDays, "×", quantity, "=", total);
-                    
-                    $("#total"+row).val(total);
-                    $("#totalValue"+row).val(total);
-            
-                    // recalculate subtotals
-                    subAmount();
-                },
-                error: function(xhr, status, error) {
-                    console.error("Error fetching product:", error);
-                    alert("Error loading product data. Please check console.");
-                }
-            });
-        }
-    } else {
-        alert('no row! please refresh the page');
-    }
-}
+function submitPayment() {
+	var $modal = $('#paymentOrderModal');
+	clearFieldErrors($modal);
+	$('.paymentOrderMessages').empty();
 
+	var amount = Number($('#payAmount').val());
+	var due = Number($('#payAmount').data('due')) || 0;
+	var ok = true;
+	if(!amount || amount <= 0) { fieldError($('#payAmount'), 'Enter an amount greater than 0.'); ok = false; }
+	else if(amount > due + 0.001) { fieldError($('#payAmount'), 'Cannot be more than the balance (KSh ' + formatMoney(due) + ').'); ok = false; }
+	if(!$('#payPaymentType').val()) { fieldError($('#payPaymentType'), 'Select a method.'); ok = false; }
+	if(!ok) { return; }
 
-// table total
-function getTotal(row = null) {
-    if(row) {
-        var dailyRate = parseFloat($("#dailyRate"+row).val()) || 0;
-        var rentalDays = parseFloat($("#rentalDays"+row).val()) || 0;
-        var quantity = parseFloat($("#quantity"+row).val()) || 0;
-        
-        console.log("Calculating row", row, ":", dailyRate, rentalDays, quantity); // Debug log
-        
-        if(dailyRate && rentalDays && quantity) {
-            var total = dailyRate * rentalDays * quantity;
-            total = total.toFixed(2);
-            $("#total"+row).val(total);
-            $("#totalValue"+row).val(total);
-            
-            subAmount();
-        }
-    } else {
-        alert('no row !! please refresh the page');
-    }
-}
-
-// Calculate total based on daily rate and rental days
-function calculateRentalTotal(row = null) {
-    if(row) {
-        var dailyRate = parseFloat($("#dailyRate"+row).val()) || 0;
-        var rentalDays = parseFloat($("#rentalDays"+row).val()) || 1;
-        var quantity = parseFloat($("#quantity"+row).val()) || 1;
-        
-        console.log("Rental Calculation - Row:", row);
-        console.log("Daily Rate:", dailyRate);
-        console.log("Rental Days:", rentalDays);
-        console.log("Quantity:", quantity);
-        
-        if(dailyRate > 0 && rentalDays > 0 && quantity > 0) {
-            var total = dailyRate * rentalDays * quantity;
-            total = total.toFixed(2);
-            console.log("Total calculated:", total);
-            
-            $("#total"+row).val(total);
-            $("#totalValue"+row).val(total);
-            
-            subAmount();
-        } else {
-            console.log("Invalid values for calculation");
-            $("#total"+row).val("0.00");
-            $("#totalValue"+row).val("0.00");
-            subAmount();
-        }
-    }
-}
-
-// Enable/disable returned date based on order status
-function toggleReturnedDate() {
-    var orderStatus = $("#orderStatus").val();
-    var returnedDateField = $("#returnedDate");
-    
-    if(orderStatus == 1) { // Completed
-        returnedDateField.prop('disabled', false);
-        returnedDateField.prop('required', true);
-        if(!returnedDateField.val()) {
-            // Set default to today if empty
-            returnedDateField.val(getTodayDate());
-        }
-    } else {
-        returnedDateField.prop('disabled', true);
-        returnedDateField.prop('required', false);
-    }
-}
-
-// Get today's date in YYYY-MM-DD format
-function getTodayDate() {
-    var today = new Date();
-    var dd = String(today.getDate()).padStart(2, '0');
-    var mm = String(today.getMonth() + 1).padStart(2, '0'); // January is 0!
-    var yyyy = today.getFullYear();
-    return yyyy + '-' + mm + '-' + dd;
-}
-
-// Call on page load and when order status changes
-$(document).ready(function() {
-    toggleReturnedDate();
-    $("#orderStatus").change(function() {
-        toggleReturnedDate();
-    });
-});
-
-function subAmount() {
-	var tableProductLength = $("#productTable tbody tr").length;
-	var totalSubAmount = 0;
-	for(x = 0; x < tableProductLength; x++) {
-		var tr = $("#productTable tbody tr")[x];
-		var count = $(tr).attr('id');
-		count = count.substring(3);
-
-		totalSubAmount = Number(totalSubAmount) + Number($("#total"+count).val());
-	} // /for
-
-	totalSubAmount = totalSubAmount.toFixed(2);
-
-	// sub total (no VAT)
-	$("#subTotal").val(totalSubAmount);
-	$("#subTotalValue").val(totalSubAmount);
-
-	// VAT removed - set to 0
-	$("#vat").val("0.00");
-	$("#vatValue").val("0.00");
-
-	// total amount (same as subtotal, no VAT)
-	var totalAmount = Number($("#subTotal").val());
-	totalAmount = totalAmount.toFixed(2);
-	$("#totalAmount").val(totalAmount);
-	$("#totalAmountValue").val(totalAmount);
-
-	// Apply discount if any
-	var discount = $("#discount").val();
-	if(discount && discount > 0) {
-		var grandTotal = Number($("#totalAmount").val()) - Number(discount);
-		grandTotal = grandTotal.toFixed(2);
-		$("#grandTotal").val(grandTotal);
-		$("#grandTotalValue").val(grandTotal);
-	} else {
-		$("#grandTotal").val(totalAmount);
-		$("#grandTotalValue").val(totalAmount);
-	} // /else discount	
-
-	// Calculate due amount
-	var paidAmount = $("#paid").val();
-	if(paidAmount && paidAmount > 0) {
-		paidAmount =  Number($("#grandTotal").val()) - Number(paidAmount);
-		paidAmount = paidAmount.toFixed(2);
-		$("#due").val(paidAmount);
-		$("#dueValue").val(paidAmount);
-	} else {	
-		$("#due").val($("#grandTotal").val());
-		$("#dueValue").val($("#grandTotal").val());
-	} // else
-
-} // /sub total amount
-
-function discountFunc() {
-	var discount = $("#discount").val() || 0;
- 	var totalAmount = Number($("#totalAmount").val()) || 0;
- 	totalAmount = totalAmount.toFixed(2);
-
- 	var grandTotal;
- 	if(totalAmount > 0) { 	
- 		grandTotal = Number($("#totalAmount").val()) - Number(discount);
- 		if(grandTotal < 0) grandTotal = 0;
- 		grandTotal = grandTotal.toFixed(2);
-
- 		$("#grandTotal").val(grandTotal);
- 		$("#grandTotalValue").val(grandTotal);
- 	} else {
- 		$("#grandTotal").val("0.00");
- 		$("#grandTotalValue").val("0.00");
- 	}
-
- 	var paid = $("#paid").val() || 0;
-
- 	var dueAmount; 	
- 	if(paid > 0) {
- 		dueAmount = Number($("#grandTotal").val()) - Number(paid);
- 		if(dueAmount < 0) dueAmount = 0;
- 		dueAmount = dueAmount.toFixed(2);
-
- 		$("#due").val(dueAmount);
- 		$("#dueValue").val(dueAmount);
- 	} else {
- 		$("#due").val($("#grandTotal").val());
- 		$("#dueValue").val($("#grandTotal").val());
- 	}
-
-} // /discount function
-
-function paidAmount() {
-	var grandTotal = $("#grandTotal").val();
-
-	if(grandTotal) {
-		var dueAmount = Number($("#grandTotal").val()) - Number($("#paid").val());
-		dueAmount = dueAmount.toFixed(2);
-		$("#due").val(dueAmount);
-		$("#dueValue").val(dueAmount);
-	} // /if
-} // /paid amoutn function
-
-
-function resetOrderForm() {
-	// reset the input field
-	$("#createOrderForm")[0].reset();
-	// remove remove text danger
-	$(".text-danger").remove();
-	// remove form group error 
-	$(".form-group").removeClass('has-success').removeClass('has-error');
-	// reset GST label
-	$(".gst").text("GST 18%");
-} // /reset order form
-
-
-// remove order from server
-function removeOrder(orderId = null) {
-	if(orderId) {
-		$("#removeOrderBtn").unbind('click').bind('click', function() {
-			$("#removeOrderBtn").button('loading');
-
-			$.ajax({
-				url: 'php_action/removeOrder.php',
-				type: 'post',
-				data: {orderId : orderId},
-				dataType: 'json',
-				success:function(response) {
-					$("#removeOrderBtn").button('reset');
-
-					if(response.success == true) {
-
-						manageOrderTable.ajax.reload(null, false);
-						// hide modal
-						$("#removeOrderModal").modal('hide');
-						// success messages
-						$("#success-messages").html('<div class="alert alert-success">'+
-	            '<button type="button" class="close" data-dismiss="alert">&times;</button>'+
-	            '<strong><i class="glyphicon glyphicon-ok-sign"></i></strong> '+ response.messages +
-	          '</div>');
-
-						// remove the mesages
-	          $(".alert-success").delay(500).show(10, function() {
-							$(this).delay(3000).hide(10, function() {
-								$(this).remove();
-							});
-						}); // /.alert	          
-
-					} else {
-						// error messages
-						$(".removeOrderMessages").html('<div class="alert alert-warning">'+
-	            '<button type="button" class="close" data-dismiss="alert">&times;</button>'+
-	            '<strong><i class="glyphicon glyphicon-ok-sign"></i></strong> '+ response.messages +
-	          '</div>');
-
-						// remove the mesages
-	          $(".alert-success").delay(500).show(10, function() {
-							$(this).delay(3000).hide(10, function() {
-								$(this).remove();
-							});
-						}); // /.alert	          
-					} // /else
-
-				} // /success
-			});  // /ajax function to remove the order
-
-		}); // /remove order button clicked
-		
-
-	} else {
-		alert('error! refresh the page again');
-	}
-}
-// /remove order from server
-
-// Payment ORDER - FIXED VERSION
-function paymentOrder(orderId = null) {
-    if(orderId) {
-        console.log("Opening payment modal for Order ID:", orderId);
-        
-        // Reset form first
-        $("#due").val('');
-        $("#payAmount").val('');
-        $("#paymentType").val('');
-        $("#paymentStatus").val('');
-        
-        // Clear previous errors
-        $('.text-danger').remove();
-        $('.form-group').removeClass('has-error').removeClass('has-success');
-
-        $.ajax({
-            url: 'php_action/fetchOrderPaymentData.php', // Changed to new endpoint
-            type: 'post',
-            data: {orderId: orderId},
-            dataType: 'json',
-            success: function(response) {
-                console.log("Payment Order Response:", response);
-                
-                if(response.success == true && response.order) {
-                    var order = response.order;
-                    
-                    // Populate due amount
-                    var dueAmount = parseFloat(order.due) || 0;
-                    $("#due").val(dueAmount.toFixed(2));
-                    
-                    // Populate pay amount (default to due amount)
-                    $("#payAmount").val(dueAmount.toFixed(2));
-                    
-                    // Set payment type if exists
-                    if(order.payment_type) {
-                        $("#paymentType").val(order.payment_type);
-                    }
-                    
-                    // Set payment status if exists
-                    if(order.payment_status) {
-                        $("#paymentStatus").val(order.payment_status);
-                    }
-                    
-                    console.log("Due Amount:", dueAmount);
-                    
-                    // Update payment
-                    $("#updatePaymentOrderBtn").unbind('click').bind('click', function() {
-                        // Add client-side validation before AJAX call
-						var payAmount = parseFloat($("#payAmount").val()) || 0;
-						var currentDue = parseFloat($("#due").val()) || 0;
-						var grandTotal = parseFloat(order.grand_total) || 0;
-
-						// Check if payment exceeds due amount
-						if(payAmount > currentDue) {
-							$("#payAmount").after('<p class="text-danger">Payment cannot exceed due amount of ₹' + currentDue.toFixed(2) + '</p>');
-							$("#payAmount").closest('.form-group').addClass('has-error');
-							$("#updatePaymentOrderBtn").button('reset');
-							return false;
-						}
-
-						// Check if payment is positive
-						if(payAmount <= 0) {
-							$("#payAmount").after('<p class="text-danger">Payment amount must be greater than 0</p>');
-							$("#payAmount").closest('.form-group').addClass('has-error');
-							$("#updatePaymentOrderBtn").button('reset');
-							return false;
-}
-                        var paymentType = $("#paymentType").val();
-                        var paymentStatus = $("#paymentStatus").val();
-                        
-                        // Validation
-                        var hasError = false;
-                        
-                        if(isNaN(payAmount) || payAmount <= 0) {
-                            $("#payAmount").after('<p class="text-danger">Valid Pay Amount is required</p>');
-                            $("#payAmount").closest('.form-group').addClass('has-error');
-                            hasError = true;
-                        } else {
-                            $("#payAmount").closest('.form-group').removeClass('has-error').addClass('has-success');
-                        }
-
-                        if(!paymentType) {
-                            $("#paymentType").after('<p class="text-danger">Payment Type is required</p>');
-                            $("#paymentType").closest('.form-group').addClass('has-error');
-                            hasError = true;
-                        } else {
-                            $("#paymentType").closest('.form-group').removeClass('has-error').addClass('has-success');
-                        }
-
-                        if(!paymentStatus) {
-                            $("#paymentStatus").after('<p class="text-danger">Payment Status is required</p>');
-                            $("#paymentStatus").closest('.form-group').addClass('has-error');
-                            hasError = true;
-                        } else {
-                            $("#paymentStatus").closest('.form-group').removeClass('has-error').addClass('has-success');
-                        }
-
-                        if(!hasError) {
-                            $("#updatePaymentOrderBtn").button('loading');
-                            
-                            // Calculate new paid and due amounts
-							var currentPaid = parseFloat(order.paid) || 0;
-							var currentDue = parseFloat(order.due) || 0;
-							var payAmount = parseFloat($("#payAmount").val()) || 0;
-
-							// VALIDATION: Payment should not exceed due amount
-							if(payAmount > currentDue) {
-								alert("Payment amount (₹" + payAmount.toFixed(2) + ") cannot exceed due amount (₹" + currentDue.toFixed(2) + ")");
-								$("#payAmount").val(currentDue.toFixed(2)); // Auto-correct to max due
-								payAmount = currentDue;
-							}
-
-							var newPaid = currentPaid + payAmount;
-							var newDue = currentDue - payAmount;
-							if(newDue < 0) newDue = 0;
-                            
-                            console.log("Payment Update:", {
-                                orderId: orderId,
-                                payAmount: payAmount,
-                                paymentType: paymentType,
-                                paymentStatus: paymentStatus,
-                                currentPaid: currentPaid,
-                                newPaid: newPaid,
-                                newDue: newDue
-                            });
-                            
-                            $.ajax({
-                                url: 'php_action/editPayment.php',
-                                type: 'post',
-                                data: {
-                                    orderId: orderId,
-                                    payAmount: payAmount,
-                                    paymentType: paymentType,
-                                    paymentStatus: paymentStatus,
-                                    currentPaid: currentPaid,
-                                    newPaid: newPaid,
-                                    newDue: newDue,
-                                    grandTotal: order.grand_total
-                                },
-                                dataType: 'json',
-                                success: function(response) {
-                                    console.log("Payment Update Response:", response);
-                                    $("#updatePaymentOrderBtn").button('reset');
-
-                                    // remove error
-                                    $('.text-danger').remove();
-                                    $('.form-group').removeClass('has-error').removeClass('has-success');
-
-                                    if(response.success == true) {
-                                        $("#paymentOrderModal").modal('hide');
-                                        
-                                        // Show success message
-                                        $("#success-messages").html('<div class="alert alert-success">'+
-                                            '<button type="button" class="close" data-dismiss="alert">&times;</button>'+
-                                            '<strong><i class="glyphicon glyphicon-ok-sign"></i></strong> '+ response.messages +
-                                        '</div>');
-
-                                        // remove the mesages after delay
-                                        $(".alert-success").delay(500).show(10, function() {
-                                            $(this).delay(3000).hide(10, function() {
-                                                $(this).remove();
-                                            });
-                                        });
-
-                                        // refresh the manage order table
-                                        if(typeof manageOrderTable !== 'undefined') {
-                                            manageOrderTable.ajax.reload(null, false);
-                                        } else {
-                                            location.reload(); // Fallback
-                                        }
-
-                                    } else {
-                                        // Show error in modal
-                                        $(".paymentOrderMessages").html('<div class="alert alert-danger">'+
-                                            '<button type="button" class="close" data-dismiss="alert">&times;</button>'+
-                                            '<strong><i class="glyphicon glyphicon-warning-sign"></i></strong> '+ response.messages +
-                                        '</div>');
-                                    }
-                                },
-                                error: function(xhr, status, error) {
-                                    $("#updatePaymentOrderBtn").button('reset');
-                                    console.error("Payment update error:", error);
-                                    alert("Error updating payment. Please try again.");
-                                }
-                            });
-                        }
-                        return false;
-                    });
-
-                } else {
-                    alert("Error loading order data: " + (response.messages || "Unknown error"));
-                    console.error("Failed to load order data:", response);
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error("Error fetching order data:", error);
-                alert("Error loading order information. Please try again.");
-            }
-        });
-    } else {
-        alert('Error! Refresh the page again');
-    }
+	var $btn = $('#updatePaymentOrderBtn').button('loading');
+	$.ajax({
+		url: 'php_action/editPayment.php',
+		type: 'post',
+		data: {
+			orderId: paymentOrderId,
+			payAmount: amount.toFixed(2),
+			paymentType: $('#payPaymentType').val(),
+			paymentReference: $('#payReference').val()
+		},
+		dataType: 'json',
+		success: function(response) {
+			$btn.button('reset');
+			if(response.success) {
+				$modal.modal('hide');
+				showToast(response.messages, 'success');
+				reloadOrders();
+			} else {
+				showAlert('.paymentOrderMessages', 'error', response.messages);
+			}
+		}
+	});
 }

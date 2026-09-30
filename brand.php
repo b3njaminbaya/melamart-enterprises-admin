@@ -1,170 +1,116 @@
 <?php require_once 'includes/header.php'; ?>
-
+<?php require_admin(); ?>
 
 <div class="row">
 	<div class="col-md-12">
 
 		<ol class="breadcrumb">
-		  <li><a href="dashboard.php">Home</a></li>		  
-		  <li class="active">Brand</li>
+		  <li><a href="dashboard.php">Home</a></li>
+		  <li class="active">Brands</li>
 		</ol>
 
 		<div class="panel panel-default">
 			<div class="panel-heading">
-				<div class="page-heading"> <i class="glyphicon glyphicon-edit"></i> Manage Brand</div>
+				<div class="page-heading"> <i class="glyphicon glyphicon-bookmark"></i> Manage Brands</div>
 			</div> <!-- /panel-heading -->
 			<div class="panel-body">
 
-				<div class="remove-messages"></div>
-
 				<div class="div-action pull pull-right" style="padding-bottom:20px;">
-					<button class="btn btn-default button1" data-toggle="modal" data-target="#addBrandModel"> <i class="glyphicon glyphicon-plus-sign"></i> Add Brand </button>
-				</div> <!-- /div-action -->				
-				
-				<table class="table" id="manageBrandTable">
+					<button class="btn btn-primary" id="addBrandBtn"> <i class="glyphicon glyphicon-plus-sign"></i> Add Brand </button>
+				</div> <!-- /div-action -->
+
+				<table class="table" id="manageBrandTable" style="width:100%;">
 					<thead>
-						<tr>							
-							<th>Brand Name</th>
+						<tr>
+							<th>Brand</th>
+							<th class="text-right">Products</th>
 							<th>Status</th>
-							<th style="width:15%;">Options</th>
+							<th style="width:90px;"></th>
 						</tr>
 					</thead>
 				</table>
-				<!-- /table -->
 
 			</div> <!-- /panel-body -->
-		</div> <!-- /panel -->		
+		</div> <!-- /panel -->
 	</div> <!-- /col-md-12 -->
 </div> <!-- /row -->
 
-<div class="modal fade" id="addBrandModel" tabindex="-1" role="dialog">
+<!-- add / edit brand (one modal) -->
+<div class="modal fade" id="brandModal" tabindex="-1" role="dialog">
   <div class="modal-dialog">
     <div class="modal-content">
-    	
-    	<form class="form-horizontal" id="submitBrandForm" action="php_action/createBrand.php" method="POST">
+    	<form class="form-horizontal" id="brandForm" method="POST" novalidate>
 	      <div class="modal-header">
 	        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-	        <h4 class="modal-title"><i class="fa fa-plus"></i> Add Brand</h4>
+	        <h4 class="modal-title" id="brandModalTitle">Add Brand</h4>
 	      </div>
 	      <div class="modal-body">
-
-	      	<div id="add-brand-messages"></div>
+	      	<div id="brand-messages"></div>
+	      	<input type="hidden" id="brandId">
 
 	        <div class="form-group">
-	        	<label for="brandName" class="col-sm-3 control-label">Brand Name: </label>
-	        	<label class="col-sm-1 control-label">: </label>
-				    <div class="col-sm-8">
-				      <input type="text" class="form-control" id="brandName" placeholder="Brand Name" name="brandName" autocomplete="off">
-				    </div>
-	        </div> <!-- /form-group-->	         	        
+	        	<label for="brandName" class="col-sm-3 control-label">Name *</label>
+			    <div class="col-sm-9">
+			      <input type="text" class="form-control" id="brandName" autocomplete="off">
+			    </div>
+	        </div>
 	        <div class="form-group">
-	        	<label for="brandStatus" class="col-sm-3 control-label">Status: </label>
-	        	<label class="col-sm-1 control-label">: </label>
-				    <div class="col-sm-8">
-				      <select class="form-control" id="brandStatus" name="brandStatus">
-				      	<option value="">~~SELECT~~</option>
-				      	<option value="1">Available</option>
-				      	<option value="2">Not Available</option>
-				      </select>
-				    </div>
-	        </div> <!-- /form-group-->	         	        
-
+	        	<label for="brandStatus" class="col-sm-3 control-label">Status *</label>
+			    <div class="col-sm-9">
+			      <select class="form-control" id="brandStatus">
+			      	<option value="1">Available</option>
+			      	<option value="2">Not available</option>
+			      </select>
+			      <p class="help-block small">"Not available" hides it when adding or editing products.</p>
+			    </div>
+	        </div>
 	      </div> <!-- /modal-body -->
-	      
+
 	      <div class="modal-footer">
-	        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-	        
-	        <button type="submit" class="btn btn-primary" id="createBrandBtn" data-loading-text="Loading..." autocomplete="off">Save Changes</button>
+	        <button type="button" class="btn btn-link" data-dismiss="modal">Close</button>
+	        <button type="submit" class="btn btn-primary" id="saveBrandBtn" data-loading-text="Saving…"><i class="glyphicon glyphicon-ok-sign"></i> Save</button>
 	      </div>
-	      <!-- /modal-footer -->
      	</form>
-	     <!-- /.form -->
     </div>
-    <!-- /modal-content -->
   </div>
-  <!-- /modal-dailog -->
 </div>
-<!-- / add modal -->
-
-<!-- edit brand -->
-<div class="modal fade" id="editBrandModel" tabindex="-1" role="dialog">
-  <div class="modal-dialog">
-    <div class="modal-content">
-    	
-    	<form class="form-horizontal" id="editBrandForm" action="php_action/editBrand.php" method="POST">
-	      <div class="modal-header">
-	        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-	        <h4 class="modal-title"><i class="fa fa-edit"></i> Edit Brand</h4>
-	      </div>
-	      <div class="modal-body">
-
-	      	<div id="edit-brand-messages"></div>
-
-	      	<div class="modal-loading div-hide" style="width:50px; margin:auto;padding-top:50px; padding-bottom:50px;">
-						<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>
-						<span class="sr-only">Loading...</span>
-					</div>
-
-		      <div class="edit-brand-result">
-		      	<div class="form-group">
-		        	<label for="editBrandName" class="col-sm-3 control-label">Brand Name: </label>
-		        	<label class="col-sm-1 control-label">: </label>
-					    <div class="col-sm-8">
-					      <input type="text" class="form-control" id="editBrandName" placeholder="Brand Name" name="editBrandName" autocomplete="off">
-					    </div>
-		        </div> <!-- /form-group-->	         	        
-		        <div class="form-group">
-		        	<label for="editBrandStatus" class="col-sm-3 control-label">Status: </label>
-		        	<label class="col-sm-1 control-label">: </label>
-					    <div class="col-sm-8">
-					      <select class="form-control" id="editBrandStatus" name="editBrandStatus">
-					      	<option value="">~~SELECT~~</option>
-					      	<option value="1">Available</option>
-					      	<option value="2">Not Available</option>
-					      </select>
-					    </div>
-		        </div> <!-- /form-group-->	
-		      </div>         	        
-		      <!-- /edit brand result -->
-
-	      </div> <!-- /modal-body -->
-	      
-	      <div class="modal-footer editBrandFooter">
-	        <button type="button" class="btn btn-default" data-dismiss="modal"> <i class="glyphicon glyphicon-remove-sign"></i> Close</button>
-	        
-	        <button type="submit" class="btn btn-success" id="editBrandBtn" data-loading-text="Loading..." autocomplete="off"> <i class="glyphicon glyphicon-ok-sign"></i> Save Changes</button>
-	      </div>
-	      <!-- /modal-footer -->
-     	</form>
-	     <!-- /.form -->
-    </div>
-    <!-- /modal-content -->
-  </div>
-  <!-- /modal-dailog -->
-</div>
-<!-- / add modal -->
-<!-- /edit brand -->
 
 <!-- remove brand -->
-<div class="modal fade" tabindex="-1" role="dialog" id="removeMemberModal">
+<div class="modal fade" tabindex="-1" role="dialog" id="removeBrandModal">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-        <h4 class="modal-title"><i class="glyphicon glyphicon-trash"></i> Remove Brand</h4>
+        <h4 class="modal-title"><i class="glyphicon glyphicon-trash"></i> Remove brand</h4>
       </div>
       <div class="modal-body">
-        <p>Do you really want to remove ?</p>
+      	<div class="removeBrandMessages"></div>
+        <p>Remove <strong id="removeBrandName"></strong>?</p>
       </div>
-      <div class="modal-footer removeBrandFooter">
-        <button type="button" class="btn btn-default" data-dismiss="modal"> <i class="glyphicon glyphicon-remove-sign"></i> Close</button>
-        <button type="button" class="btn btn-primary" id="removeBrandBtn" data-loading-text="Loading..."> <i class="glyphicon glyphicon-ok-sign"></i> Save changes</button>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link" data-dismiss="modal">Keep</button>
+        <button type="button" class="btn btn-danger" id="removeBrandBtn" data-loading-text="Removing…"><i class="glyphicon glyphicon-trash"></i> Remove</button>
       </div>
-    </div><!-- /.modal-content -->
-  </div><!-- /.modal-dialog -->
-</div><!-- /.modal -->
-<!-- /remove brand -->
+    </div>
+  </div>
+</div>
 
-<script src="custom/js/brand.js"></script>
+<script>
+	var CRUD = {
+		label: 'Brand',
+		nav: '#navBrand',
+		fetchUrl: 'php_action/fetchBrand.php',
+		fetchOneUrl: 'php_action/fetchSelectedBrand.php',
+		fetchOneParam: 'brandId',
+		createUrl: 'php_action/createBrand.php',
+		createFields: { name: 'brandName', status: 'brandStatus' },
+		editUrl: 'php_action/editBrand.php',
+		editFields: { name: 'editBrandName', status: 'editBrandStatus', id: 'brandId' },
+		removeUrl: 'php_action/removeBrand.php',
+		removeParam: 'brandId',
+		prefix: 'brand'
+	};
+</script>
+<script src="custom/js/simpleCrud.js"></script>
 
 <?php require_once 'includes/footer.php'; ?>

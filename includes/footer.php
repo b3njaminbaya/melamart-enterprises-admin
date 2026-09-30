@@ -1,15 +1,8 @@
 </div> <!-- container -->
-	
 
-	<!-- file input -->
-	<script src="assets/plugins/fileinput/js/plugins/canvas-to-blob.min.js" type="text/javascript"></script>
-	<script src="assets/plugins/fileinput/js/plugins/sortable.min.js" type="text/javascript"></script>	
-	<script src="assets/plugins/fileinput/js/plugins/purify.min.js" type="text/javascript"></script>
-	<script src="assets/plugins/fileinput/js/fileinput.min.js"></script>	
-
-
-	<!-- DataTables -->
-	<script src="assets/plugins/datatables/jquery.dataTables.min.js"></script>
+	<p class="text-center text-muted" style="font-size:12px; margin:10px 0 24px;">
+		&copy; <?php echo date('Y'); ?> <?php echo h(MEL_COMPANY_NAME); ?>
+	</p>
 
 </body>
 </html>
