@@ -68,3 +68,6 @@ php_action/config.local.php
 # SMS cron log
 storage/logs/*
 !storage/logs/.gitkeep
+
+# Private notes with real passwords (never commit)
+docs/*.local.md
