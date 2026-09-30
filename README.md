@@ -163,6 +163,14 @@ After importing the SQL schema, log in with the credentials defined in the `user
 
 ---
 
+## Deployment
+
+Step-by-step checklists for hosting on a server (cPanel) or running as an offline desktop install (Windows + XAMPP): see `docs/DEPLOYMENT.md`.
+
+The app connects with a restricted MySQL user (SELECT/INSERT/UPDATE/DELETE only). Run migrations in `_sql/` with an admin MySQL account.
+
+---
+
 ## Cron Job
 
 A daily overdue digest SMS to the administrator runs via cron (CLI only). See `docs/CRON_SETUP.md` for the exact crontab entry and configuration.
