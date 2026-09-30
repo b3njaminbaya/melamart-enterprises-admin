@@ -15,3 +15,5 @@
 
 // Public demo site only: stop visitors changing the shared demo login.
 // define('MEL_LOCKED_DEMO_USER', 'demo');
+// ...and show that login on the login page (never on the real install):
+// define('MEL_DEMO_PASSWORD', 'the demo password');

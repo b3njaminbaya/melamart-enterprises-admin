@@ -212,6 +212,40 @@ if($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     .btn-login:active { transform: translateY(0); }
 
+    /* ── Demo login box (demo server only) ── */
+    .demo-box {
+      background: #fff8e1;
+      border: 1px solid #f5d27a;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      color: #5c4400;
+      line-height: 1.55;
+    }
+    .demo-box strong { color: #0b3d5e; }
+    .demo-box code {
+      background: #fff;
+      border: 1px solid #f0dca4;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 12.5px;
+      color: #1a2634;
+    }
+    .demo-box button {
+      margin-top: 8px;
+      background: #f5a800;
+      color: #072e46;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 12px;
+      font-weight: 700;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .demo-box button:hover { background: #ffc130; }
+    .demo-box small { display: block; margin-top: 6px; color: #7a5a00; }
+
     /* ── Yellow accent strip ── */
     .login-accent {
       height: 5px;
@@ -244,6 +278,23 @@ if($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php foreach($errors as $err): ?>
       <div class="error-box"><?php echo htmlspecialchars($err, ENT_QUOTES, 'UTF-8'); ?></div>
     <?php endforeach; ?>
+
+    <?php if(MEL_LOCKED_DEMO_USER !== '' && MEL_DEMO_PASSWORD !== '') { ?>
+    <div class="demo-box">
+      <strong>Trying the demo?</strong> Sign in as staff:<br>
+      <span style="white-space:nowrap;">Username <code><?php echo htmlspecialchars(MEL_LOCKED_DEMO_USER, ENT_QUOTES, 'UTF-8'); ?></code></span>
+      &nbsp;<span style="white-space:nowrap;">Password <code><?php echo htmlspecialchars(MEL_DEMO_PASSWORD, ENT_QUOTES, 'UTF-8'); ?></code></span><br>
+      <button type="button" id="useDemoLogin">Use demo login</button>
+      <small>All clients, orders and payments here are sample data.</small>
+    </div>
+    <script>
+      document.getElementById('useDemoLogin').addEventListener('click', function() {
+        document.getElementById('username').value = <?php echo json_encode(MEL_LOCKED_DEMO_USER, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+        document.getElementById('password').value = <?php echo json_encode(MEL_DEMO_PASSWORD, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+        document.getElementById('password').form.submit();
+      });
+    </script>
+    <?php } ?>
 
     <form action="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" method="POST" autocomplete="off">
 

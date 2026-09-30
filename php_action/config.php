@@ -36,6 +36,8 @@ mel_define('MEL_SMS_ADMIN_PHONE', '');    // receives the daily overdue digest, 
 // Username of a shared demo login whose username/password cannot be changed
 // from My Account (so visitors cannot lock each other out). '' = off.
 mel_define('MEL_LOCKED_DEMO_USER', '');
+// Shown on the login page next to that username (demo server only). '' = hidden.
+mel_define('MEL_DEMO_PASSWORD', '');
 
 // ─── Invoice terms (printed at the bottom of every invoice) ─
 // Review these with management; override in config.local.php via $MEL_INVOICE_TERMS.
